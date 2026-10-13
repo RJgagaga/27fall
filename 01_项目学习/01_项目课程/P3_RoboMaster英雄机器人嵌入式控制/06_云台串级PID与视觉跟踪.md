@@ -248,7 +248,7 @@ float pid_step(pid_t *p, float err, float meas, float dt)
 - 抗积分饱和（anti-windup）：输出饱和时停止继续积分，避免饱和解除后"积分放不掉"造成大过冲；
 - 微分先行 + 低通：微分作用于测量值而不是误差。
 
-> **【笔记线索】**：你的笔记指出快照里的 PID 实现把比例、积分、微分相加并对积分和总输出限幅，但**没有显式乘除 $\Delta t$**，因此增益隐含了控制周期。这是可以如实讲的设计取舍："the gains absorb the loop period, so I tuned at a fixed period and avoided changing it afterwards"；更好的做法是显式写 $dt$，见 [12 数字 PID 实现、限幅、滤波与安全](./12_数字PID实现_限幅_滤波与安全保护.md)。
+> **【笔记线索】**：你的笔记指出快照里的 PID 实现把比例、积分、微分相加并对积分和总输出限幅，但**没有显式乘除 $\Delta t$**，因此增益隐含了控制周期。这是可以如实讲的设计取舍："the gains absorb the loop period, so I tuned at a fixed period and avoided changing it afterwards"；更好的做法是显式写 $dt$，见 12 数字 PID 实现、限幅、滤波与安全（未单独成章）。
 
 ### 7.2 角度误差绕回
 
@@ -626,7 +626,7 @@ $\operatorname{atan2}(0,-0.99985)=180^\circ$ ✓。
 
 - 上一章：[05 IMU/AHRS 与云台姿态](./05_IMU_AHRS与云台姿态.md)
 - 下一章：[07 发射机构：摩擦轮与拨盘](./07_发射机构_摩擦轮与拨盘.md)
-- 数字 PID 工程细节：[12 数字 PID 实现、限幅、滤波与安全](./12_数字PID实现_限幅_滤波与安全保护.md)
+- 数字 PID 工程细节：12 数字 PID 实现、限幅、滤波与安全（未单独成章）
 - 基础：[PID 控制全解](../../02_基础知识/04_控制理论/02_PID控制全解.md)、[前馈、增益调度、限幅与饱和](../../02_基础知识/04_控制理论/07_前馈_增益调度_限幅与饱和.md)
 - 八股：[控制八股](../../03_八股知识/03_机器人学/02_控制八股.md)
 - 相关项目：[P1 AIRS 球形机器人平衡控制](../P1_AIRS球形机器人平衡控制/README.md)（级联 PID 的另一应用）

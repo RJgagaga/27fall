@@ -135,7 +135,7 @@ CV 中与 P3 相关的获奖（直接引用 CV，不增不减）：
 - **执行器**：四个驱动电机，带动四个麦克纳姆轮。
 - **传感器**：电机反馈（转速）、裁判系统给出的实时功率与缓冲能量、云台 yaw 相对角（用于"底盘跟随云台"）。
 - **CV 对应**：*Chassis power control: allocated body velocity to four Mecanum wheels, estimated power demand from real-time power and buffer-energy feedback and scaled wheel speeds, keeping the chassis manoeuvrable under power limits.*
-- **本项目文档**：[09 麦克纳姆运动学](./09_底盘_麦克纳姆运动学与跟随.md)、[10 底盘功率控制](./10_底盘功率控制.md)。
+- **本项目文档**：09 麦克纳姆运动学（未单独成章）、[10 底盘功率控制](./10_底盘功率控制.md)。
 
 ### 5.4 三者的耦合关系
 
