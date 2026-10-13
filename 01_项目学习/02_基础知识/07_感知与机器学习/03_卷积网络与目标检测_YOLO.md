@@ -530,7 +530,15 @@ F1 在 0.25 附近最高。但**"F1 最高"不一定是你要的**：如果漏�
 
 > Deep features carry strong semantics but low resolution, shallow features carry precise location but weak semantics. FPN passes semantics down to shallow layers, PAN passes localization back up, so every output scale has both.
 
-**Q6. What did you personally do in the vision part of your project?**（要如实）
+**Q6. Anchor-based versus anchor-free detection?**
+
+> Anchor-based detectors predict offsets relative to preset box shapes, which makes regression easier and gives prior knowledge about object sizes, but anchors are hyperparameters that must match the dataset and they add many hand-designed choices. Anchor-free detectors, like YOLOv8, predict box geometry directly from locations, which simplifies the pipeline and removes anchor tuning, at the cost of needing a good label-assignment strategy. My project uses YOLOv5, which is anchor-based.
+
+**Q7. How do you choose the confidence threshold for deployment?**
+
+> I sweep the threshold on a labelled validation set, plot precision, recall and F1, and choose according to the cost of errors. In an irrigation or monitoring context a missed detection and a false alarm have different costs, so I would not simply take the default value. I would also treat the detection as evidence together with other signals rather than as a ground truth.
+
+**Q8. What did you personally do in the vision part of your project?**（要如实）
 
 > I built the edge inference chain on the RK3588: preprocessing, running the quantized YOLOv5 model through RKNN, post-processing with thresholding and NMS, and turning the result into a structured observation with confidence and a timestamp. 【请按你的实际训练参与程度补充一句】
 
@@ -552,6 +560,12 @@ F1 在 0.25 附近最高。但**"F1 最高"不一定是你要的**：如果漏�
    **答案**：25200 个候选绝大多数是背景，先过滤使 NMS 的 $O(n^2)$ 开销很小。
 7. 为什么 mAP 不能用来解释单个框的 confidence？
    **答案**：mAP 是整个数据集、按排序统计的指标；confidence 是单次输出的分数，且未必校准。
+8. 阈值 0.5 的混淆数据 TP=70、FP=8、FN=30，求 precision、recall、F1。
+   **答案**：$P=70/78=0.897$；$R=70/100=0.70$；$F1=2\times0.897\times0.7/1.597=0.787$。
+9. Focal Loss 中 $\gamma=2$，$p_t=0.95$ 与 $p_t=0.2$ 的调制因子 $(1-p_t)^\gamma$？
+   **答案**：$0.05^2=0.0025$；$0.8^2=0.64$，相差约 256 倍，容易样本几乎被忽略。
+10. 瓶颈块 $1\times1$（128→32）+ $3\times3$（32→32）+ $1\times1$（32→128）参数量？
+   **答案**：$4096+9216+4096=17408$（忽略偏置）；直接 $3\times3$ 128→128 为 $147456$，约 $1/8.5$。
 
 ---
 

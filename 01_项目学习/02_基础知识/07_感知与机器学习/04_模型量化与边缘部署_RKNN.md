@@ -331,6 +331,28 @@ rknn.export_rknn('model.rknn')
 rknn.release()
 ```
 
+### 9.2b 板端推理骨架（教学示例，非项目源码；API 以版本文档为准）
+
+```python
+import cv2
+import numpy as np
+from rknnlite.api import RKNNLite            # 板端轻量运行时
+
+rknn = RKNNLite()
+rknn.load_rknn('model.rknn')
+rknn.init_runtime()                           # 可选择使用哪个 NPU 核心，见版本文档
+
+img = cv2.imread('frame.jpg')                 # BGR
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)    # 与训练/转换时一致
+img, ratio, (pad_w, pad_h) = letterbox(img, (640, 640))   # 保比例缩放+补边（自行实现）
+inputs = [np.expand_dims(img, 0)]             # (1, 640, 640, 3), uint8, 不要再除以 255
+outputs = rknn.inference(inputs=inputs)       # 三路原始特征图（若导出时去掉了解码）
+# ... 后处理：阈值过滤 -> 解码 -> NMS -> 用 ratio/pad 还原到原图坐标 ...
+rknn.release()
+```
+
+三点：(1) 输入是 **uint8 的原始像素**，布局以模型要求为准（常见 NHWC）；(2) 反量化、解码是你自己的后处理代码；(3) 一帧的耗时要分成"采集、预处理、NPU、后处理"分段计时。RK3588 有多个 NPU 核心，工程上可以用多线程/多进程把不同帧分给不同核心提高吞吐，但这是**吞吐优化，不降低单帧延迟**。
+
 ### 9.3 `mean_values` / `std_values` 到底是什么
 
 工具链把"归一化"**写进模型的第一层**：模型实际接收的是原始 uint8 像素，内部做 $x'=(x-\text{mean})/\text{std}$。

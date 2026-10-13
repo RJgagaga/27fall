@@ -25,7 +25,7 @@
 - 影响：CPU 密集型任务用多线程**不能**加速（甚至更慢，有锁争抢）；IO 密集型任务线程在等待 IO 时会释放 GIL，所以仍有效。
 - 调度：线程每执行一段时间（默认约 5ms 的切换间隔 `sys.getswitchinterval()`）被请求释放 GIL。
 - C 扩展（numpy、OpenCV）的重计算部分通常会释放 GIL，所以 numpy 多线程可并行。
-- 发展：CPython 3.13 起提供实验性的 free-threaded（无 GIL）构建（PEP 703），默认构建仍有 GIL（我在此记为"需核对版本说明"）。
+- 发展：CPython 3.13 起提供实验性的 free-threaded（无 GIL）构建（PEP 703），默认构建仍有 GIL（具体版本与状态以官方发行说明为准，未核对）。
 
 **English short answer**
 The GIL is a global lock in CPython that lets only one thread execute Python bytecode at a time. It exists because CPython uses non-atomic reference counting for memory management, and one global lock is simpler and faster for single-threaded code. As a result, threads do not speed up CPU-bound pure Python code, but they work well for IO-bound tasks because the lock is released while waiting. Heavy native libraries such as numpy release the GIL too.
