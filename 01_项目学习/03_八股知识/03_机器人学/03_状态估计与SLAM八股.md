@@ -13,13 +13,13 @@
 - 说明时间戳、坐标系和运动方向不一致如何引起漂移与跳变（对应 P5 CV bullet）。
 
 **前置知识**：
-- [传感器：IMU/编码器/激光雷达](../../02_基础知识/05_状态估计/01_传感器_IMU_编码器_激光雷达.md)
-- [互补滤波与 Mahony AHRS](../../02_基础知识/05_状态估计/02_互补滤波与Mahony_AHRS.md)
-- [卡尔曼滤波与 EKF](../../02_基础知识/05_状态估计/03_卡尔曼滤波与EKF.md)
-- [里程计与传感器融合](../../02_基础知识/05_状态估计/04_里程计与传感器融合.md)
-- [粒子滤波与 AMCL](../../02_基础知识/05_状态估计/05_粒子滤波与AMCL.md)
-- [时间同步、坐标系一致性与数据有效性](../../02_基础知识/05_状态估计/06_时间同步_坐标系一致性与数据有效性.md)
-- [概率统计与高斯分布](../../02_基础知识/01_数学/03_概率统计与高斯分布.md)
+- [传感器：IMU/编码器/激光雷达](../../02_基础知识/06_状态估计/01_传感器_IMU_编码器_激光雷达.md)
+- [互补滤波与 Mahony AHRS](../../02_基础知识/06_状态估计/02_互补滤波与Mahony_AHRS.md)
+- [卡尔曼滤波与 EKF](../../02_基础知识/06_状态估计/03_卡尔曼滤波与EKF.md)
+- [里程计与传感器融合](../../02_基础知识/06_状态估计/04_里程计与传感器融合.md)
+- [粒子滤波与 AMCL](../../02_基础知识/06_状态估计/05_粒子滤波与AMCL.md)
+- [时间同步、坐标系一致性与数据有效性](../../02_基础知识/06_状态估计/06_时间同步_坐标系一致性与数据有效性.md)
+- [概率统计与高斯分布](../../02_基础知识/01_数学基础/03_概率统计与高斯分布.md)
 
 **优先级**：★★★ 必会；★★ 常见；★ 加分。
 
@@ -285,7 +285,7 @@ $$v_x=\frac r4(\omega_1+\omega_2+\omega_3+\omega_4),\ v_y=\frac r4(-\omega_1+\om
   （符号取决于轮序和滚子方向）；
 - 麦轮滚子滑动，横向打滑严重，里程计精度差于差速；
 - 三全向轮（ballbot 底盘）用 $3\times3$ 逆矩阵从轮速得机体速度。
-- 详见 [差速、麦克纳姆、全向轮与车辆运动学](../../02_基础知识/02_力学与建模/04_差速_麦克纳姆_全向轮与车辆运动学.md)。
+- 详见 [差速、麦克纳姆、全向轮与车辆运动学](../../02_基础知识/02_力学与动力学建模/04_差速_麦克纳姆_全向轮与车辆运动学.md)。
 **English short answer**
 For Mecanum or omni wheels, the body velocity is a linear map of the wheel speeds, and its form depends on the wheel layout. The side slip of the rollers makes odometry noticeably worse than with a differential drive, so I rely on other sensors to correct it.
 **追问方向**：符号确定；三轮矩阵条件数。
@@ -317,7 +317,7 @@ A typical design has pose, velocity and gyro bias as the state. The wheels and t
 - 原因：不同传感器的采样时间≠消息到达时间；链路延迟；不同时钟（IMU 板与主机）；TF 查询时间用 `now` 而不是消息时间；
 - 处理：使用传感器采样时间戳；时钟同步（PTP/NTP/硬件触发）；TF 缓冲与插值（查询消息时刻的变换）；对点云运动畸变去畸变（deskew）；滤波器乱序/延迟测量处理（保存历史状态）；
 - 在多机器人/OpenHarmony M-DDS 场景中同样需要统一时间基准与有效性检查（P6：*standardised timestamps, coordinate frames and validity checks*）。
-- 见 [时间同步、坐标系一致性与数据有效性](../../02_基础知识/05_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
+- 见 [时间同步、坐标系一致性与数据有效性](../../02_基础知识/06_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
 **English short answer**
 If timestamps are wrong, fused poses jitter or lag during turns and scans misalign with the map. I use the sensor's own acquisition time, synchronise clocks, look up transforms at the message time with interpolation, and handle delayed measurements by replaying from a stored state. I also add validity checks on stale or out-of-order data.
 **追问方向**：TF 外推失败的报错；点云去畸变。
@@ -354,7 +354,7 @@ robot_localization is a ROS package that runs an EKF or UKF over multiple odomet
 - `odom→base_link`：里程计/EKF，**连续**但会漂移，适合局部控制；
 - `map→odom`：定位模块（AMCL）发布的**修正量**，可能跳变，但全局一致；
 - `map→base_link = map→odom ∘ odom→base_link`。局部规划/控制使用 odom 避免跳变，全局规划使用 map。
-- 详见 [ROS 软件八股](./05_ROS与机器人软件八股.md)、[URDF/TF/坐标系](../../02_基础知识/09_机器人软件/07_URDF_TF_坐标系实践.md)。
+- 详见 [ROS 软件八股](./05_ROS与机器人软件八股.md)、[URDF/TF/坐标系](../../02_基础知识/12_机器人软件/07_URDF_TF_坐标系实践.md)。
 **English short answer**
 The odom-to-base transform is smooth but drifts, so the controller can rely on it, while the map-to-odom transform is published by the localiser and holds the correction, which may jump. Composing them gives the global pose. That separation keeps the local control continuous even when localisation corrects itself.
 **追问方向**：REP-105；位姿跳变的排查。
@@ -681,4 +681,4 @@ The estimate must be fast, low-latency and consistent, otherwise the controller 
 
 - 上一篇：[02 控制八股](./02_控制八股.md)；下一篇：[04 路径规划与导航八股](./04_路径规划与导航八股.md)
 - 项目：[P1](../../01_项目课程/P1_AIRS球形机器人平衡控制/README.md)、[P2](../../01_项目课程/P2_未来动力双臂遥操作与差速底盘/README.md)、[P3](../../01_项目课程/P3_RoboMaster英雄机器人嵌入式控制/README.md)、[P5](../../01_项目课程/P5_车式移动机器人自主导航/README.md)、[P6](../../01_项目课程/P6_深开鸿M-Robots平台软件/README.md)
-- 基础：[卡尔曼滤波与 EKF](../../02_基础知识/05_状态估计/03_卡尔曼滤波与EKF.md)、[粒子滤波与 AMCL](../../02_基础知识/05_状态估计/05_粒子滤波与AMCL.md)
+- 基础：[卡尔曼滤波与 EKF](../../02_基础知识/06_状态估计/03_卡尔曼滤波与EKF.md)、[粒子滤波与 AMCL](../../02_基础知识/06_状态估计/05_粒子滤波与AMCL.md)

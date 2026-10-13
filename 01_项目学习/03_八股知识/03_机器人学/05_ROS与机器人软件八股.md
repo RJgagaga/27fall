@@ -14,11 +14,11 @@
 - 对应到 P1/P2/P5/P6 的 CV 条目，并给出可直接复述的项目回答。
 
 **前置知识**：
-- [ROS1/ROS2 核心概念](../../02_基础知识/09_机器人软件/04_ROS1_ROS2核心概念.md)
-- [DDS 与分布式通信](../../02_基础知识/09_机器人软件/05_DDS与分布式通信.md)
-- [MuJoCo、Pinocchio、KDL 工具链](../../02_基础知识/09_机器人软件/06_MuJoCo_Pinocchio_KDL_工具链.md)
-- [URDF、TF、坐标系实践](../../02_基础知识/09_机器人软件/07_URDF_TF_坐标系实践.md)
-- [CAN/FDCAN 与电机通信](../../02_基础知识/08_嵌入式与通信/03_CAN_FDCAN与电机通信.md)
+- [ROS2 Humble 核心概念与 ROS1 对比](../../02_基础知识/12_机器人软件/04_ROS2_Humble核心概念与ROS1对比.md)
+- [DDS 与分布式通信](../../02_基础知识/12_机器人软件/05_DDS与分布式通信.md)
+- [MuJoCo、Pinocchio、KDL 工具链](../../02_基础知识/12_机器人软件/06_MuJoCo_Pinocchio_KDL_工具链.md)
+- [URDF、TF、坐标系实践](../../02_基础知识/12_机器人软件/07_URDF_TF_坐标系实践.md)
+- [CAN/FDCAN 与电机通信](../../02_基础知识/11_嵌入式与通信/03_CAN_FDCAN与电机通信.md)
 
 **优先级**：★★★ 必会；★★ 常见；★ 加分。
 
@@ -397,7 +397,7 @@ I pin the control thread to an isolated core with real-time priority, avoid allo
 **答案要点**
 - 低优先级任务持有高优先级任务需要的锁，被中优先级抢占 → 高优先级被间接阻塞；
 - 解决：优先级继承/天花板（FreeRTOS 互斥量有继承；二值信号量没有）；
-- 详见 [FreeRTOS 实时系统](../../02_基础知识/08_嵌入式与通信/02_FreeRTOS实时系统.md)、[06 嵌入式八股](./06_嵌入式与机电八股.md)。
+- 详见 [FreeRTOS 实时系统](../../02_基础知识/11_嵌入式与通信/02_FreeRTOS实时系统.md)、[06 嵌入式八股](./06_嵌入式与机电八股.md)。
 **English short answer**
 Priority inversion happens when a low-priority task holding a lock is preempted by a medium-priority task while a high-priority task waits. Priority inheritance on mutexes solves it.
 **追问方向**：Mars Pathfinder。
@@ -744,4 +744,4 @@ I focus on three things: the link I owned, for example the ROS2 to CAN chain; a 
 
 - 上一篇：[04 路径规划与导航八股](./04_路径规划与导航八股.md)；下一篇：[06 嵌入式与机电八股](./06_嵌入式与机电八股.md)
 - 项目：[P1](../../01_项目课程/P1_AIRS球形机器人平衡控制/README.md)、[P2](../../01_项目课程/P2_未来动力双臂遥操作与差速底盘/README.md)、[P5](../../01_项目课程/P5_车式移动机器人自主导航/README.md)、[P6](../../01_项目课程/P6_深开鸿M-Robots平台软件/README.md)
-- 基础：[ROS1/ROS2 核心概念](../../02_基础知识/09_机器人软件/04_ROS1_ROS2核心概念.md)、[DDS](../../02_基础知识/09_机器人软件/05_DDS与分布式通信.md)
+- 基础：[ROS2 Humble 核心概念与 ROS1 对比](../../02_基础知识/12_机器人软件/04_ROS2_Humble核心概念与ROS1对比.md)、[DDS](../../02_基础知识/12_机器人软件/05_DDS与分布式通信.md)

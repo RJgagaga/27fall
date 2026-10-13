@@ -14,7 +14,7 @@
 
 ## 前置知识
 
-- 基础篇：[Transformer、LLM 与 Agent、LangGraph](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)
+- 基础篇：[Transformer、LLM 与 Agent、LangGraph](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)
 - 八股：[Agent 与 RAG 八股](../../03_八股知识/02_人工智能/07_Agent与RAG八股.md)、[Transformer 与大模型八股](../../03_八股知识/02_人工智能/04_Transformer与大模型八股.md)
 - 上一章：[09 服务端](./09_服务端_DataStore_WebSocket_asyncio.md)
 
@@ -629,6 +629,6 @@ print(graph.invoke({"sensor": {"moisture": 12, "age_s": 1, "valid": True},
 
 - 上一章：[09 服务端：DataStore、WebSocket 与 asyncio](./09_服务端_DataStore_WebSocket_asyncio.md)
 - 下一章：[11 执行边界：白名单、幂等与设备反馈](./11_执行边界_白名单_幂等与设备反馈.md)
-- 基础：[Transformer、LLM 与 Agent、LangGraph](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)
+- 基础：[Transformer、LLM 与 Agent、LangGraph](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)
 - 同构思想：[P6 安全执行链](../P6_深开鸿M-Robots平台软件/README.md)
 - 返回：[P4 README](./README.md)

@@ -8,7 +8,7 @@
 - 说出 list/dict 的底层实现与复杂度，引用计数 + 分代 GC 的工作方式；
 - 讲清 asyncio 事件循环和 numpy 广播规则。
 
-**前置知识**：[操作系统](./02_操作系统.md)（线程与进程）、[计算机网络](./03_计算机网络.md)（IO 多路复用）。工程补充：[Python工程与科学计算](../../02_基础知识/09_机器人软件/03_Python工程与科学计算.md)。
+**前置知识**：[操作系统](./02_操作系统.md)（线程与进程）、[计算机网络](./03_计算机网络.md)（IO 多路复用）。工程补充：[Python工程与科学计算](../../02_基础知识/12_机器人软件/03_Python工程与科学计算.md)。
 
 > 说明：P4 用 LangGraph 构建决策链，该框架基于 Python（异步图执行）；P2 用 MuJoCo/Mink 求解约束 IK。我们的做法是：P4 服务端是混合模型——设备数据由阻塞式 TCP 接收线程读入并写进线程安全的 DataStore 快照，WebSocket 推送与 Web 交互跑在 asyncio 事件循环里，两者通过线程安全的方式交接（细节见 [P4 第 09 章](../../01_项目课程/P4_OpenHarmony智能园艺系统/09_服务端_DataStore_WebSocket_asyncio.md)）。并发请求主要是多个网页客户端同时连接，属于 IO 密集，适合 asyncio；决策链中的阻塞调用要放到线程里，避免卡住事件循环。
 
@@ -447,7 +447,7 @@ Basic slicing returns a view that shares memory with the original array, so chan
 ### Q30 numpy 常用操作的坑：矩阵乘法、`dtype`、`axis`？（numpy pitfalls）
 **优先级：★★**
 
-**答案要点**：`*` 是逐元素乘，矩阵乘用 `@` / `np.matmul` / `np.dot`；`axis=0` 沿行方向聚合（对每列求值）；整数数组除法/累加溢出（如 `uint8` 溢出回绕）；`np.float32` 与 `float64` 混用；`np.linalg.inv` 尽量用 `solve` 代替求逆（更稳）；坐标变换用齐次矩阵 `(4,4) @ (4,N)`。见 [线性代数](../../02_基础知识/01_数学/01_线性代数.md)。
+**答案要点**：`*` 是逐元素乘，矩阵乘用 `@` / `np.matmul` / `np.dot`；`axis=0` 沿行方向聚合（对每列求值）；整数数组除法/累加溢出（如 `uint8` 溢出回绕）；`np.float32` 与 `float64` 混用；`np.linalg.inv` 尽量用 `solve` 代替求逆（更稳）；坐标变换用齐次矩阵 `(4,4) @ (4,N)`。见 [线性代数](../../02_基础知识/01_数学基础/01_线性代数.md)。
 
 **English short answer**
 The star operator is element-wise, and matrix multiplication uses the at operator. axis zero aggregates down the rows, giving one result per column. Integer dtypes like uint8 can silently wrap around, and I prefer solve over explicit matrix inversion for numerical stability.
@@ -625,4 +625,4 @@ Text is str and raw data is bytes, and I convert explicitly with an encoding suc
 
 ## 相关链接
 - 上一章：[C++八股](./05_C++八股.md)　下一章：[并发多线程与实时系统八股](./07_并发多线程与实时系统八股.md)
-- 相关：[Python工程与科学计算](../../02_基础知识/09_机器人软件/03_Python工程与科学计算.md)、[P4 项目 README](../../01_项目课程/P4_OpenHarmony智能园艺系统/README.md)、[八股总入口](../README.md)
+- 相关：[Python工程与科学计算](../../02_基础知识/12_机器人软件/03_Python工程与科学计算.md)、[P4 项目 README](../../01_项目课程/P4_OpenHarmony智能园艺系统/README.md)、[八股总入口](../README.md)

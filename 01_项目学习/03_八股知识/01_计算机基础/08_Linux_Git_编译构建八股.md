@@ -8,7 +8,7 @@
 - 说清源码到可执行文件的四个阶段，静态库/动态库区别，CMake 的基本写法；
 - 熟练回答 Git 的 merge/rebase/cherry-pick/reset/revert 等问题。
 
-**前置知识**：[操作系统](./02_操作系统.md)。基础补充：[Linux与Shell_Git](../../02_基础知识/09_机器人软件/01_Linux与Shell_Git.md)。
+**前置知识**：[操作系统](./02_操作系统.md)。基础补充：[Linux与Shell_Git](../../02_基础知识/12_机器人软件/01_Linux与Shell_Git.md)。
 
 ---
 
@@ -485,7 +485,7 @@ HEAD points to what I currently have checked out, usually a branch. In a detache
 ### Q33 ROS2 工作空间怎么编译？常见编译问题？（colcon build）
 **优先级：★★★**
 
-**答案要点**：`colcon build --symlink-install --packages-select pkg`；`source install/setup.bash`；CMake 包用 `ament_cmake`，Python 包用 `ament_python`；依赖在 `package.xml` 声明，`rosdep install --from-paths src --ignore-src -r -y`。常见问题：找不到包 → 没 source；消息头文件找不到 → 依赖未声明或未先生成接口；改了 Python 文件没生效 → 没用 `--symlink-install`；多工作空间覆盖顺序；清理 `rm -rf build install log`。详见 [ROS1_ROS2核心概念](../../02_基础知识/09_机器人软件/04_ROS1_ROS2核心概念.md)。
+**答案要点**：`colcon build --symlink-install --packages-select pkg`；`source install/setup.bash`；CMake 包用 `ament_cmake`，Python 包用 `ament_python`；依赖在 `package.xml` 声明，`rosdep install --from-paths src --ignore-src -r -y`。常见问题：找不到包 → 没 source；消息头文件找不到 → 依赖未声明或未先生成接口；改了 Python 文件没生效 → 没用 `--symlink-install`；多工作空间覆盖顺序；清理 `rm -rf build install log`。详见 [ROS2 Humble 核心概念与 ROS1 对比](../../02_基础知识/12_机器人软件/04_ROS2_Humble核心概念与ROS1对比.md)。
 
 **English short answer**
 I build with colcon, using symlink install so Python edits take effect, then source the install setup script. Typical problems are forgetting to source the workspace, missing dependency declarations in package.xml, and stale build directories, which I fix with a clean rebuild.
@@ -622,4 +622,4 @@ For cross-compiling with CMake I write a toolchain file that sets the target sys
 
 ## 相关链接
 - 上一章：[并发多线程与实时系统八股](./07_并发多线程与实时系统八股.md)　下一章：[数据库与系统设计基础](./09_数据库与系统设计基础.md)
-- 相关：[Linux与Shell_Git](../../02_基础知识/09_机器人软件/01_Linux与Shell_Git.md)、[八股总入口](../README.md)
+- 相关：[Linux与Shell_Git](../../02_基础知识/12_机器人软件/01_Linux与Shell_Git.md)、[八股总入口](../README.md)

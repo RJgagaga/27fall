@@ -13,7 +13,7 @@
 **前置知识**
 
 - [08 安全执行链](./08_安全执行链.md)
-- [Transformer、LLM 与 Agent（LangGraph）](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)
+- [Transformer、LLM 与 Agent（LangGraph）](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)
 - [Agent 与 RAG 八股](../../03_八股知识/02_人工智能/07_Agent与RAG八股.md)
 
 **目录**
@@ -363,4 +363,4 @@ PS 里你说自己的机器学习经验以实践为主，想补理论、failure 
 - 上一章：[08 安全执行链](./08_安全执行链.md)
 - 下一章：[10 测试与验证方法](./10_测试与验证方法.md)
 - 相关项目：[P4 OpenHarmony 智能园艺系统](../P4_OpenHarmony智能园艺系统/README.md)
-- 基础：[Transformer、LLM 与 Agent](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)
+- 基础：[Transformer、LLM 与 Agent](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)

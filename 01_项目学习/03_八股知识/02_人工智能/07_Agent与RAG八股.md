@@ -9,7 +9,7 @@
 - 说出 RAG 每一步（切分、嵌入、索引、检索、重排、生成）的取舍与失败模式；
 - 用"提案—校验—执行—反馈"链和"规则优先的混合架构"回答 AI 安全落地问题，并与 P4/P6 对应。
 
-**前置知识**：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)、[04_Transformer与大模型八股](./04_Transformer与大模型八股.md)。项目：[P4 README](../../01_项目课程/P4_OpenHarmony智能园艺系统/README.md)、[P6 README](../../01_项目课程/P6_深开鸿M-Robots平台软件/README.md)。
+**前置知识**：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)、[04_Transformer与大模型八股](./04_Transformer与大模型八股.md)。项目：[P4 README](../../01_项目课程/P4_OpenHarmony智能园艺系统/README.md)、[P6 README](../../01_项目课程/P6_深开鸿M-Robots平台软件/README.md)。
 
 **重要说明（事实边界）**：
 - CV 中 P4 的相关事实只有：用 LangGraph 构建"环境与视觉事件决策链"，带"极端状态的规则快速路径"，向执行层输出"结构化建议或受约束的请求"；服务器侧 agent 做编排；通过 web 交互和设备端灌溉闭环。
@@ -683,7 +683,7 @@ P6（CV）：在 M-Robots OpenHarmony 平台上，用统一能力模型抽象传
 - **状态管理（统一时间戳/坐标系/有效性）** → 校验的前置条件与反馈来源，保证校验使用的是可信、新鲜的状态；
 - **任务分发（M-DDS）** → 提案被批准后下发到具体设备；
 - **统一运动接口** → 执行层，使上层不关心底层硬件差异。
-相关基础：[05_DDS与分布式通信](../../02_基础知识/09_机器人软件/05_DDS与分布式通信.md)、[06_时间同步_坐标系一致性与数据有效性](../../02_基础知识/05_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
+相关基础：[05_DDS与分布式通信](../../02_基础知识/12_机器人软件/05_DDS与分布式通信.md)、[06_时间同步_坐标系一致性与数据有效性](../../02_基础知识/06_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
 我们的做法是：策略检查规则同 Q52/Q53（参数合法、能力已注册、状态有效、无冲突）；提案入口既可来自上层任务服务，也可由 LLM 生成，两者走同一条校验与执行路径；失败时回写状态并带原因返回上层，由其重规划或转人工。
 
 **English short answer**
@@ -730,5 +730,5 @@ P6（CV）：在 M-Robots OpenHarmony 平台上，用统一能力模型抽象传
 
 ## 相关链接
 - 上一章：[06_模型部署与量化八股](./06_模型部署与量化八股.md)；相关：[04_Transformer与大模型八股](./04_Transformer与大模型八股.md)
-- 基础：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)
+- 基础：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)
 - 项目：[P4 OpenHarmony 智能园艺系统](../../01_项目课程/P4_OpenHarmony智能园艺系统/README.md)、[P6 深开鸿 M-Robots 平台软件](../../01_项目课程/P6_深开鸿M-Robots平台软件/README.md)

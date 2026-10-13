@@ -9,7 +9,7 @@
 - 说明预训练 → SFT → RLHF/DPO 的流水线，以及 LoRA 的数学与参数量；
 - 谈论幻觉、长上下文、评估与推理优化，并简要介绍 ViT、CLIP、VLA。
 
-**前置知识**：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)、[02_深度学习八股](./02_深度学习八股.md)。
+**前置知识**：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)、[02_深度学习八股](./02_深度学习八股.md)。
 
 **优先级**：★★★ 必背，★★ 常问，★ 加分。涉及具体论文结论或数字，处理原则：只写我确定的经典结论，细节标「未核对」。
 
@@ -553,7 +553,7 @@ VLA：输入相机图像 + 语言指令（+ 本体状态），输出机器人动
 
 ### Q52. 多模态融合策略 ★
 **答案要点**
-早期融合（输入层拼接）、晚期融合（各模态独立后合并）、中间融合（交叉注意力、Q-Former）。机器人感知中还包括时间同步与坐标系对齐问题，见 [06_时间同步_坐标系一致性与数据有效性](../../02_基础知识/05_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
+早期融合（输入层拼接）、晚期融合（各模态独立后合并）、中间融合（交叉注意力、Q-Former）。机器人感知中还包括时间同步与坐标系对齐问题，见 [06_时间同步_坐标系一致性与数据有效性](../../02_基础知识/06_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
 
 **English short answer**
 > Fusion can happen early by concatenating inputs, late by combining separate predictions, or in the middle through cross-attention. In robotics, time synchronization and coordinate frame alignment between modalities are just as important as the fusion architecture.
@@ -601,5 +601,5 @@ Decision Transformer 把 RL 当序列建模（条件于回报预测动作）；A
 
 ## 相关链接
 - 上一章：[03_计算机视觉与目标检测八股](./03_计算机视觉与目标检测八股.md)；下一章：[05_强化学习八股](./05_强化学习八股.md)
-- 基础：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/07_感知与机器学习/05_Transformer_LLM与Agent_LangGraph.md)、[06_强化学习与具身智能入门](../../02_基础知识/07_感知与机器学习/06_强化学习与具身智能入门.md)
+- 基础：[05_Transformer_LLM与Agent_LangGraph](../../02_基础知识/10_机器学习与深度学习/05_Transformer_LLM与Agent_LangGraph.md)、[06_强化学习与具身智能入门](../../02_基础知识/10_机器学习与深度学习/06_强化学习与具身智能入门.md)
 - Agent 与 RAG：[07_Agent与RAG八股](./07_Agent与RAG八股.md)

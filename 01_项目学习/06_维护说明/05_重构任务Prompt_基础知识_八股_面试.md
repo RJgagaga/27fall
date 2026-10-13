@@ -42,7 +42,7 @@
 ```text
 你是文档重构团队成员「F2」。【公共前缀】
 
-任务：为"只会编程、数学物理需要从头补"的读者写教材级基础知识。你负责目录 01_项目学习/02_基础知识/03_坐标变换与运动学/ 下六个文件：
+任务：为"只会编程、数学物理需要从头补"的读者写教材级基础知识。你负责目录 01_项目学习/02_基础知识/03_运动学与坐标变换/ 下六个文件：
 - 01_坐标系_旋转矩阵_齐次变换.md（坐标系、主动/被动变换、旋转矩阵性质、齐次变换矩阵、变换链与逆、相对位姿 T_v0^{-1}T_v 的含义、坐标对齐 R_a、TF 树视角）
 - 02_欧拉角_四元数_姿态表示.md（欧拉角与万向锁、轴角、四元数定义/乘法/共轭/旋转向量、xyzw 与 wxyz、q 与 -q 双覆盖与半球处理、SLERP、四元数与旋转矩阵互转、姿态误差；IMU 姿态在 AHRS/云台/ballbot 的符号坑）
 - 03_正逆运动学与雅可比.md（DH/几何法、正运动学、雅可比的定义与几何含义、速度运动学、微分 IK、位置误差/姿态误差、冗余度；二连杆完整手算；MuJoCo/Mink 的 FrameTask 视角）
@@ -57,7 +57,7 @@
 ```text
 你是文档重构团队成员「F3」。【公共前缀】
 
-任务：为"只会编程、数学物理需要从头补"的读者写教材级基础知识（用户学过《自动控制原理》《现代控制理论》，但要重新系统化并能用英文面试讲清）。你负责目录 01_项目学习/02_基础知识/04_控制理论/ 下八个文件：
+任务：为"只会编程、数学物理需要从头补"的读者写教材级基础知识（用户学过《自动控制原理》《现代控制理论》，但要重新系统化并能用英文面试讲清）。你负责目录 01_项目学习/02_基础知识/05_控制理论/ 下八个文件：
 - 01_反馈控制与系统响应基础.md（开环/闭环、传递函数、一阶二阶系统、阶跃响应指标、极点与稳定性、劳斯判据、根轨迹/频域伯德图直觉、带宽与相位裕度、灵敏度）
 - 02_PID控制全解.md（P/I/D 各自作用、数学形式、离散实现（位置式/增量式）、微分滤波、抗积分饱和（clamping/back-calculation）、串级 PID 为何成立（内外环带宽比）、前馈、整定方法（Ziegler-Nichols/经验整定/频域）、常见故障；对应 P1 位置外环→姿态内环、P3 云台角度-角速度串级、P2 轮速PID、P7 腿长PID；完整手算数个周期）
 - 03_状态空间_可控可观_稳定性.md（状态空间形式、线性化、可控可观性判据、李雅诺夫稳定性、极点配置、状态观测器入门）
@@ -87,7 +87,7 @@ B. 06_规划与导航/ 五个文件：
 - 02_Hybrid_A星与车辆运动学约束.md（非完整约束、连续状态离散化、运动基元、启发函数（holonomic-with-obstacles / non-holonomic）、Reeds-Shepp/Dubins 解析扩展、碰撞检测 footprint、轨迹平滑；手算一步扩展；对应 P5）
 - 03_代价地图_局部规划_TEB.md（占据栅格、膨胀、代价地图层、DWA 简述、TEB 的 elastic band 构造、g2o 超图、各代价项、速度/加速度/运动学约束、时间最优、重规划；对应 P5）
 - 04_轨迹跟踪_PurePursuit_Stanley_MPC.md（Pure Pursuit 推导与手算、Stanley、MPC 跟踪（可链接控制理论 05 章）、横向/纵向解耦、参考轨迹生成、延迟）
-- 05_导航系统架构_move_base与Nav2.md（move_base 流程、全局/局部规划器接口、costmap_2d、recovery 行为、TF 树 map→odom→base_link、Nav2 架构差异（行为树、lifecycle））
+- 05_导航系统架构_Nav2与move_base对比.md（move_base 流程、全局/局部规划器接口、costmap_2d、recovery 行为、TF 树 map→odom→base_link、Nav2 架构差异（行为树、lifecycle））
 每个文件 6000–12000 汉字等量，严格遵循"讲解方式"八步（含完整手算、英文面试问答、自测题）。素材：git 历史 4fb3ac3 下 01_项目学习/01_通用基础/04_传感器与状态估计/ 和 06_导航_视觉与机器学习/（质量差，仅挖事实）；用户疑惑点在 05_学习笔记归档/P5/P5_本对话问答逐字稿.md（Grep 关键词 EKF、AMCL、Hybrid、TEB、MPC、TF）。完成后按 写作规范.md 第7节回复。只写你负责的文件。
 ```
 
@@ -96,7 +96,7 @@ B. 06_规划与导航/ 五个文件：
 ```text
 你是文档重构团队成员「F5」。【公共前缀】
 
-任务：为"有编程基础、机器学习偏实践"的读者写教材级基础知识（用户的 PS 承认 ML 理论基础薄弱、想系统补，AI 方向面试官会重点考）。你负责目录 01_项目学习/02_基础知识/07_感知与机器学习/ 下六个文件：
+任务：为"有编程基础、机器学习偏实践"的读者写教材级基础知识（用户的 PS 承认 ML 理论基础薄弱、想系统补，AI 方向面试官会重点考）。你负责目录 01_项目学习/02_基础知识/10_机器学习与深度学习/ 下六个文件：
 - 01_机器学习基础.md（监督/无监督、线性回归、逻辑回归、损失函数、过拟合欠拟合、偏差方差、正则化、交叉验证、特征、决策树/SVM/KNN/聚类简述、评价指标（precision/recall/F1/AUC/混淆矩阵）、数据划分、数据泄漏；全带手算）
 - 02_神经网络与反向传播.md（感知机→MLP、激活函数、前向、反向传播完整推导与手算（一个2层小网络）、优化器（SGD/Momentum/Adam）、BatchNorm、初始化、梯度消失爆炸、训练技巧、过拟合处理）
 - 03_卷积网络与目标检测_YOLO.md（卷积/池化/感受野、经典 CNN、目标检测概念：锚框/IoU/NMS/mAP、两阶段 vs 单阶段、YOLOv1→v5 演进、YOLOv5 结构（CSP/Focus/PAN/FPN）与输出张量解码、损失（框回归/obj/cls）、数据增强、评估；NMS 与 IoU 手算；边缘部署相关）
@@ -131,8 +131,8 @@ B. 09_机器人软件/ 三个文件：
 ```text
 你是文档重构团队成员「F7」。【公共前缀】
 
-任务：为"有编程基础"的读者写教材级机器人软件基础知识。你负责目录 01_项目学习/02_基础知识/09_机器人软件/ 下四个文件（01–03 不归你）：
-- 04_ROS1_ROS2核心概念.md（节点/话题/服务/动作/参数/launch；ROS1 master 架构 vs ROS2 去中心化；消息与 .msg；QoS；执行器与回调组；时间 sim time；rosbag/ros2 bag；TF；catkin vs colcon/ament；ros_control/ros2_control 概念；真机调试常用命令；ROS2-CAN 执行链的典型架构；对应 P1(ROS)/P2(ROS2)/P5/P6)
+任务：为"有编程基础"的读者写教材级机器人软件基础知识。你负责目录 01_项目学习/02_基础知识/12_机器人软件/ 下四个文件（01–03 不归你）：
+- 04_ROS2_Humble核心概念与ROS1对比.md（节点/话题/服务/动作/参数/launch；ROS1 master 架构 vs ROS2 去中心化；消息与 .msg；QoS；执行器与回调组；时间 sim time；rosbag/ros2 bag；TF；catkin vs colcon/ament；ros_control/ros2_control 概念；真机调试常用命令；ROS2-CAN 执行链的典型架构；对应 P1(ROS)/P2(ROS2)/P5/P6)
 - 05_DDS与分布式通信.md（DDS 是什么、RTPS、Domain/Topic/Publisher/Subscriber/DataWriter/DataReader、QoS 策略（reliability/durability/history/deadline/liveliness/lifespan）、发现机制（SPDP/SEDP）、共享内存传输、与 ZeroMQ/MQTT 对比、多机器人协同中的设备发现/能力注册/状态同步/任务分发典型设计；对应 P6 的 M-DDS，用"典型做法"措辞，不编造 M-DDS 专有 API）
 - 06_MuJoCo_Pinocchio_KDL_工具链.md（MuJoCo：MJCF、MjModel/MjData、qpos/qvel/ctrl、mj_forward/mj_step、nq 与 nv；Mink：Configuration/Task/Limits/solve_ik/integrate；Pinocchio：model/data、RNEA/CRBA、质心 computeCenterOfMass、重力项 computeGeneralizedGravity；KDL：Tree/Chain、ChainDynParam::JntToGravity；各自小段示例代码（教学示例，标明未运行核对）；三者区别与适用场景；对应 P1/P2)
 - 07_URDF_TF_坐标系实践.md（URDF 语法与常见错误、xacro、关节零位与轴方向、tf2 变换查询与时间、静态/动态 TF、坐标系命名规范 REP-103/105、frame_id 与时间戳校验、可视化 rviz、常见 TF 故障（跳变、extrapolation、循环）；对应 P1/P2/P5/P6)
@@ -160,7 +160,7 @@ B. 09_机器人软件/ 三个文件：
 你是文档重构团队成员「B2」。【公共前缀】
 
 任务：写"人工智能八股"：用户申请的 AI/CS/具身智能硕士面试会考机器学习、深度学习、CV、LLM、RL。用户自己的 PS 承认 ML 经验偏实践，所以要讲透理论。你负责 01_项目学习/03_八股知识/02_人工智能/ 下七个文件：01_机器学习八股（偏差方差、正则化、损失函数、优化、评价指标、集成学习、SVM、树模型、聚类、降维 PCA、概率图简述、特征工程、过拟合、类别不平衡）；02_深度学习八股（反向传播、激活函数、BN/LN、优化器、初始化、dropout、梯度问题、CNN/RNN/LSTM、残差网络、训练技巧、混合精度）；03_计算机视觉与目标检测八股（YOLO 系列、Faster R-CNN、SSD、anchor-free、NMS/IoU 变体、mAP 计算、数据增强、小目标、分割简述、特征金字塔；YOLOv5 细节：CSP、PAN、CIoU、mosaic——对应 P4）；04_Transformer与大模型八股（Self-attention 推导、多头、位置编码、LayerNorm、KV cache、预训练目标、SFT/RLHF、LoRA、幻觉、上下文、Prompt、评估、推理优化；ViT；具身 VLA 简述）；05_强化学习八股（MDP、Bellman、DQN、PG、Actor-Critic、PPO、SAC、探索利用、sim2real、奖励设计、模仿学习；与 MPC/LQR 对比）；06_模型部署与量化八股（ONNX、TensorRT/RKNN、PTQ/QAT、量化公式、剪枝蒸馏、算子融合、延迟与吞吐、边缘端优化——对应 P4）；07_Agent与RAG八股（LLM Agent 架构、ReAct、tool calling、LangGraph/状态机编排、记忆、RAG 流程与向量检索、评估与失败模式、安全与护栏、人在回路、规则优先的混合架构——对应 P4/P6 的"提案-校验-执行-反馈"链）。
-格式：每文件 40–80 个高频题，"题目（中英）→ 优先级 ★ → 答案要点（中文，含原理/推导/公式，不是一句话）→ English short answer（3–6句，口语化）→ 追问方向"。每文件 6000–12000 汉字等量；公式用 $...$。与 02_基础知识/07_感知与机器学习 互链（../../02_基础知识/07_感知与机器学习/xx.md）。完成后按 写作规范.md 第7节回复。只写你负责的文件。
+格式：每文件 40–80 个高频题，"题目（中英）→ 优先级 ★ → 答案要点（中文，含原理/推导/公式，不是一句话）→ English short answer（3–6句，口语化）→ 追问方向"。每文件 6000–12000 汉字等量；公式用 $...$。与 02_基础知识/07_感知与机器学习 互链（../../02_基础知识/10_机器学习与深度学习/xx.md）。完成后按 写作规范.md 第7节回复。只写你负责的文件。
 ```
 
 ### B3：机器人学
