@@ -1,4 +1,0 @@
-# 科学实验依赖；安装后在环境记录中保存实际版本
-numpy
-scipy
-matplotlib
