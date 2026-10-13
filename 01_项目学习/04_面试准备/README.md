@@ -86,8 +86,8 @@
 | [07 港城大 计算机科学 P53](./02_各校面试准备/07_港城大_计算机科学P53.md) | CityU HK MSc CS (P53) |
 | [08 澳门大学 机器人与自主系统](./02_各校面试准备/08_澳门大学_机器人与自主系统.md) | UM MSc Robotics and Autonomous Systems |
 | [09 澳门大学 人工智能](./02_各校面试准备/09_澳门大学_人工智能.md) | UM MSc AI |
-| [10 澳门科技大学 人工智能](./02_各校面试准备/10_澳门科技大学_人工智能.md) | MUST MSc AI |
-| [11 港科大广州 具身智能](./02_各校面试准备/11_港科大广州_具身智能.md) | HKUST(GZ) MSc Embodied Intelligence |
+| 10 澳门科技大学 人工智能（暂未编写） | MUST MSc AI |
+| 11 港科大广州 具身智能（暂未编写） | HKUST(GZ) MSc Embodied Intelligence |
 
 ### 2.3 `03_项目口述总览`（项目素材的英文口述版）
 
