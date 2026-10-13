@@ -672,7 +672,7 @@ CV 的 P6 事实：在 M-DDS 上实现设备发现、能力注册、状态同步
 **English short answer**
 > In my gardening system the vision model produces timestamped, confidence-scored observations, which together with sensor data and user commands form a traceable system state. A LangGraph decision chain proposes structured recommendations, and a rule-based fast path handles extreme states immediately. The actual pump is controlled by a local state machine on the microcontroller with separate start and stop thresholds and a manual override, so the agent can never bypass the final safety layer.
 
-**追问方向**：为什么启停阈值要分开？（迟滞/滞回，避免水泵在阈值附近抖动，见 [08_控制/嵌入式相关章节] 的迟滞概念）
+**追问方向**：为什么启停阈值要分开？（迟滞/滞回，避免水泵在阈值附近抖动，即迟滞/滞回比较器的思想）
 
 ### Q55. 与 P6 的对应：多机器人平台里这条链 ★★★
 **答案要点**
