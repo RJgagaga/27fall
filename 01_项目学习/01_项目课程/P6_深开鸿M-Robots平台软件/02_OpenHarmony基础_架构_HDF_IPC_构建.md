@@ -349,6 +349,38 @@ NAPI 的典型流程：C++ 写 `napi_value` 风格函数 → 用 `napi_define_pr
 
 ---
 
+## 10.5 一条运动命令穿越系统的完整路径（典型设计）
+
+前面各节分别讲了内核、HDF、IPC、构建。这一节把它们串成一条路径：一条来自 ROS2 的速度命令，从进入平台到变成电机上的力矩指令，要经过哪些进程、哪些 IPC 跳转、每一跳大致要花多少时间。数值是设计预算（教学示例），用来说明"为什么进程划分会影响延迟与可调试性"，不是实测。
+
+```text
+ROS2 /cmd_vel
+   │  ① 桥接适配进程（rclcpp 节点，用户态）          ≤2 ms
+   ▼
+提案封装 → ② IPC 调用策略校验服务（独立进程）        每跳 0.3～1 ms
+   │  ③ 校验（schema/权限/有效期/状态新鲜度/范围）    ≤5 ms
+   ▼
+批准票据 → ④ 执行网关进程（验票、限幅、平滑）        ≤1 ms
+   ▼
+⑤ 设备适配器（C++ 能力实现）→ ⑥ HDF/用户态 CAN 适配  ≤3 ms
+   ▼
+⑦ CAN 总线 → MCU 下一个控制周期取用                  ≤2 ms（MCU 100～1000 Hz）
+```
+
+**为什么每个进程边界都值得保留**：
+
+1. 桥接进程崩溃只会丢失命令来源，不会带走策略校验与驱动，重启后看门狗保证机器人先停下来。
+2. 策略校验是独立服务，网关只认票据，所以"绕过校验"需要突破进程边界（见本章 9 节）。
+3. 驱动适配与设备节点属于最靠近硬件的一层，权限最大，因此代码量要最小、逻辑最少，只做"统一命令 → 总线帧"的转换。
+
+**延迟账**：把上图七段加起来，名义值约 10 ms，上限约 30 ms；平台给"命令到执行器"的设计预算是小于 100 ms，余量主要留给 Wi-Fi 重传、线程调度抖动与偶发 GC/缺页。这个余量是否够用，不能靠推算，要靠 10 章的方法测：在每个进程入口和出口写入同一条单调时钟时间戳，用回放工具统计分位数。
+
+**调试时的读法**：出现"机器人动作迟钝"，按这七段逐段看 hilog 里各进程的入口时间差，定位是哪一跳在排队。这比"盯着最后的现象猜"快得多，这也是 15 章强调统一日志字段（seq、proposal_id、stamp）的原因。
+
+面试里可以这样收束：*In a design like this, a velocity command crosses roughly four process boundaries before it becomes a CAN frame. I keep the boundaries because they give fault isolation and a single enforcement point, and I pay for them with a budget of a few milliseconds per hop.* 译：这类设计中，一条速度命令在变成 CAN 帧之前大约要跨过四个进程边界。我保留这些边界是因为它们带来故障隔离和唯一的约束点，代价是每跳几毫秒的预算。
+
+---
+
 ## 11. 面试问答
 
 **Q1. Describe the OpenHarmony architecture in your own words.**

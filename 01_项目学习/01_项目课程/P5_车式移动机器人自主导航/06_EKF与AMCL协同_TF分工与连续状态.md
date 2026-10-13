@@ -30,7 +30,11 @@
 8. 时间对齐与延迟
 9. 倒车与方向对协同的影响
 10. 跳变排查流程
-11. 面试问答 / 要点速记 / 自测题 / 链接
+11. 在 ROS2 里怎么落地：节点、话题、QoS 与 TF 发布权
+12. 把平滑做成一个可验证的节点：逐周期手算
+13. 日志判读示例：三份典型 map→odom 序列
+14. 重定位、丢失与安全降级
+15. 面试问答 / 要点速记 / 自测题 / 链接
 
 ---
 
@@ -106,12 +110,12 @@ $$\Delta=\sqrt{0.3^2+0.1^2}=0.316\ \mathrm m,\quad \Delta\theta=0.02\ \mathrm{ra
 |---|---|---|---|
 | 1 | **里程计漂移累积后被一次性纠正** | AMCL 修正落在更新点上 | 修正量与自上次修正以来的行驶距离成比例；跳变发生在 AMCL 更新点 |
 | 2 | **AMCL 门限造成"成块"修正** | `update_min_d/a` 大，更新稀 | 减小门限后台阶变小变密 |
-| 3 | **粒子簇切换** | 多峰，主簇换了 | 看 `/particlecloud` 是否出现两团 |
+| 3 | **粒子簇切换** | 多峰，主簇换了 | 看 `/particle_cloud`（`nav2_amcl` 发布的粒子云话题）是否出现两团 |
 | 4 | **初始位姿/重定位** | 手动 re-initial pose，或 recovery 注入随机粒子 | 跳变与操作/日志时间一致 |
 | 5 | **时间戳错位** | 激光/里程/IMU 时间不一致，匹配拉偏 | 跳变量与速度、角速度成正比，转弯时更明显 |
 | 6 | **坐标系/静态变换错** | `laser_link` 安装位姿错，匹配系统性偏 | 位姿总偏一个固定量；直行 vs 转弯偏差不同 |
 | 7 | **方向（倒车）符号错** | 里程预测方向与激光观测矛盾 | 倒车时跳变，前进时正常 |
-| 8 | **TF 重复发布/树错误** | 两个节点发布同一变换；或 TF 缓冲外推 | `rqt_tf_tree` 父节点冲突；TF 在两个值间闪烁 |
+| 8 | **TF 重复发布/树错误** | 两个节点发布同一变换；或 TF 缓冲外推 | `ros2 run tf2_tools view_frames` / `rqt_tf_tree` 父节点冲突；TF 在两个值间闪烁 |
 
 其中第 5、6、7 类正是 CV 里 "inconsistent timing, frames and motion direction" 的三个维度。处理它们的优先顺序：**先排除数据本身的不一致（5/6/7/8），再谈 AMCL 参数（1/2/3/4）**。数据不一致的情况下调 AMCL 参数是掩盖问题。
 
@@ -224,7 +228,7 @@ CV 说 "output a continuous vehicle state"。工程上这是一份**契约**：
 
 ## 10. 跳变排查流程
 
-1. **量化**：录 bag；对 `map→odom` 序列计算相邻发布的差 $\Delta p,\Delta\theta$；找出大于阈值的时刻；
+1. **量化**：用 `ros2 bag record` 录包；对 `map→odom` 序列计算相邻发布的差 $\Delta p,\Delta\theta$；找出大于阈值的时刻；
 2. **对齐事件**：该时刻车在做什么（转弯/倒车/启动/刚收到初始位姿）、AMCL 日志、粒子云形状、协方差；
 3. **分流**：
  - 跳变与转弯角速度相关 → 时间戳/去畸变（03 章）；
@@ -251,7 +255,202 @@ def find_steps(log, d_thr=0.05, a_thr=0.02):
 
 ---
 
-## 11. 面试问答 / 要点速记 / 自测题 / 链接
+## 11. 在 ROS2 里怎么落地：节点、话题、QoS 与 TF 发布权
+
+前十节讲的是原理，这一节回答"在 ROS2 Humble 上，谁发布什么、怎么配置、怎么检查"。这是面试官很爱追问的一层：你说"EKF 发 odom→base_link，AMCL 发 map→odom"，他会接着问"怎么保证没有第三个人也在发？"
+
+### 11.1 谁是 TF 的唯一发布者
+
+| 变换 | 发布者（本项目） | 关键参数 | 发布频率 |
+|---|---|---|---|
+| `odom→base_link` | `robot_localization` 的 `ekf_node` | `publish_tf: true`、`world_frame: odom`、`odom_frame: odom`、`base_link_frame: base_link` | 与 EKF 频率一致，30 Hz |
+| `map→odom` | 本项目取值：`nav2_amcl` 发布原始值，再由一个自写的"修正管理"节点做平滑后发布 | AMCL 侧 `tf_broadcast: false`（交给管理节点），管理节点发布 | 与 EKF 同步，30 Hz（台阶之间重复发布同一值，平滑期内逐周期更新） |
+| `base_link→laser_link`、`base_link→imu_link` | `robot_state_publisher`（读 URDF）或 `static_transform_publisher` | URDF 中的 `origin xyz rpy` | 静态（`/tf_static`） |
+
+> **注意**：`nav2_amcl` 默认自己发布 `map→odom`（参数 `tf_broadcast` 默认为 true）。如果你再写一个节点也发 `map→odom`，TF 树里同一个子节点就有了两个发布者，表现为 RViz 里车辆在两个位置之间闪。这正是 8 类成因里的第 8 类。本项目的做法是关掉 AMCL 自带广播，只让平滑节点发布，并在启动自检里检查 `/tf` 中 `child_frame_id == odom` 的消息只有一个 `header.frame_id` 来源。
+
+这里"平滑节点"的角色在 ROS2 里可以这样组织：
+
+```text
+nav2_amcl ──(amcl_pose, PoseWithCovarianceStamped, 10 Hz 上下)──┐
+                                                                │
+ekf_node ──(odom→base_link via /tf, 30 Hz)──────────────────────┤
+                                                                ▼
+                                       map_odom_manager (rclcpp 节点, 30 Hz 定时器)
+                                       1) 取 amcl_pose，用 tf2 buffer 在该消息时刻查 odom→base_link
+                                       2) 算目标 T_map_odom = T_map_base * inv(T_odom_base)
+                                       3) 门限确认 + 限速平滑
+                                       4) 发布 /tf (map→odom)，stamp = 当前时间 + transform_tolerance
+```
+
+"在该消息时刻查 odom→base_link"这一步非常关键：AMCL 的位姿对应激光时刻（比当前时刻早约 0.1 s），必须用同一时刻的 `odom→base_link`，否则 $T_{map\,odom}$ 里会混入"车在这 0.1 s 里走的距离"，速度 0.5 m/s 时就是 5 cm，转弯时还会带角度误差。tf2 的 `lookupTransform(target, source, tf2::TimePoint)` 就是干这个的，缓冲区长度默认 10 s，足够。
+
+### 11.2 话题与 QoS
+
+| 话题 | 类型 | 发布者 | 订阅者 | QoS 设置（本项目取值） |
+|---|---|---|---|---|
+| `/imu/data` | `sensor_msgs/Imu` | IMU 驱动 | `ekf_node` | `SensorDataQoS`（BestEffort，深度 5）|
+| `/wheel/odom` | `nav_msgs/Odometry` | 底盘桥接节点 | `ekf_node` | `SensorDataQoS` 或 Reliable 深度 10，两端必须一致 |
+| `/scan` | `sensor_msgs/LaserScan` | 激光驱动 | `nav2_amcl`、局部代价地图 | `SensorDataQoS` |
+| `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_node` | MPC、TEB、状态接口 | Reliable，深度 10 |
+| `/amcl_pose` | `PoseWithCovarianceStamped` | `nav2_amcl` | 修正管理节点、监控 | `Transient Local + Reliable`（`nav2_amcl` 的默认），便于晚加入的节点拿到最后一条 |
+| `/tf` | `tf2_msgs/TFMessage` | 各 TF 发布者 | tf2 监听者 | 默认 Reliable，深度 100 |
+| `/tf_static` | 同上 | 静态发布者 | tf2 监听者 | `Transient Local`，所以后启动的节点也能拿到 |
+
+ROS2 里最常见的"没数据"原因是 **QoS 不兼容**：订阅者要 Reliable、发布者发的是 BestEffort 时，两边根本不会匹配，节点也不报错，只是收不到。排查命令是 `ros2 topic info /scan -v`，它会列出每个端点的 Reliability、Durability、History。本项目早期出现过一次"激光驱动发 BestEffort、代价地图用 Reliable 订阅"，表现为局部代价地图一片空白，不是算法问题。
+
+### 11.3 参数怎么管
+
+所有可调量都放在一个参数 YAML 里，用 `ros2 launch` 的 Python launch 文件加载。修正管理节点的参数示意（教学示例，数值与自查表一致）：
+
+```yaml
+map_odom_manager:
+  ros__parameters:
+    publish_rate: 30.0            # Hz，与 EKF 一致
+    rate_ratio: 0.2               # 修正速率 = 0.2 * |v|
+    rate_min: 0.05                # m/s
+    rate_max: 0.20                # m/s
+    yaw_rate_max: 0.15            # rad/s
+    jump_dist: 0.5                # m，超过视为可疑
+    jump_yaw_deg: 10.0            # deg
+    confirm_count: 3              # 连续一致次数
+    cov_trace_max: 0.3            # 协方差迹上限
+    transform_tolerance: 0.3      # s
+```
+
+参数改了怎么生效：可以用 `ros2 param set` 在线改（节点要在回调里处理 `add_on_set_parameters_callback`），也可以改 YAML 重启。实车调参时我们的习惯是：在线改只用来试，**结论一律写回 YAML 并提交**，否则下次启动参数就丢了（见 [20 章](./20_工程化实践_频率周期与问题解决.md)的参数管理一节）。
+
+### 11.4 生命周期与启动顺序
+
+`nav2_amcl`、`map_server`、代价地图都是生命周期节点（lifecycle node），由 `nav2_lifecycle_manager` 依次 `configure → activate`。定位相关的启动顺序必须是：
+
+1. `robot_state_publisher` 与静态 TF；
+2. 传感器驱动、底盘桥接；
+3. `ekf_node`（等有 IMU 和轮速后才开始发 `odom→base_link`）；
+4. `map_server`（发布地图，Transient Local）；
+5. `nav2_amcl`（激活后等待初始位姿，没有初始位姿它不会发 `map→odom`）；
+6. 修正管理节点；
+7. 规划、控制。
+
+如果 5 比 3 早，AMCL 会在没有 `odom→base_link` 的情况下报 `Failed to transform initial pose in time`；如果 7 比 6 早，规划器会拿到一个"没有 map→odom"的世界。启动脚本里用 lifecycle manager 的 `autostart` 加 `bond_timeout`，并让上层任务节点在 `/amcl_pose` 的协方差迹小于阈值后才接受目标——这也是"有效性标志 `valid`"的来源。
+
+---
+
+## 12. 把平滑做成一个可验证的节点：逐周期手算
+
+5.1 节给了一个 7 个周期的例子。实际节点的限速不是固定 0.05 m/周期，而是随车速变化，下面完整走一遍，帮你理解"为什么选车速的 20%"。
+
+**设定**（教学示例，与自查表口径一致）：定时器 30 Hz，$\Delta t=1/30=0.0333$ s；车速 $v=0.5$ m/s；修正速率 $r=\mathrm{clip}(0.2v,\,0.05,\,0.2)=\mathrm{clip}(0.1,\,0.05,\,0.2)=0.1$ m/s；每周期最大平移 $d_{max}=r\Delta t=0.1\times0.0333=0.00333$ m。
+
+目标修正 $\Delta=(−0.298,\,−0.0999)$，模长 $0.314$ m。所需周期数 $n=\lceil0.314/0.00333\rceil=95$ 个周期，约 3.2 s。这比 5.1 节"7 个周期"慢很多——因为那个例子是 10 Hz、每周期 5 cm（等效 0.5 m/s 的附加速度），而本项目的取值是车速的 20%。**为什么要慢？** 附加速度 0.1 m/s 叠加在车速 0.5 m/s 上，对横向偏差的影响是 $0.1/0.5=0.2$，约 11° 的等效航向偏差，MPC 能吸收；如果用 0.5 m/s 附加速度，等效 45°，车会明显"斜着走"。
+
+**和一次性跳变相比**：直接跳 0.314 m，MPC 在下一周期看到横向误差 0.3 m，$\delta$ 指令瞬间饱和到 0.5 rad；平滑后，每个周期横向误差只变化 3.3 mm，对转角指令的影响小于 0.001 rad/周期。
+
+**角度**：$\Delta\theta=0.02$ rad，$\dot\theta_{max}=0.15$ rad/s，每周期 $0.005$ rad，4 个周期就够，比平移早完成，不是瓶颈。但要注意**平移与旋转同时修正会交叉**：$T_{map\,odom}$ 的平移分量是在 map 系下表达的，旋转改变后，由它算出的 $T_{map\,base}$ 位置会绕 odom 原点偏转，偏转量等于 $|p_{odom\,base}|\cdot\Delta\theta$。车离 odom 原点 20 m 远时，$0.02$ rad 的旋转修正会让 map 里的位置变化 $20\times0.02=0.4$ m。这是一个常见误解：以为 $\Delta\theta=1°$ 是小量，其实在远离原点处效果很大。所以门限里的角度阈值要比直觉更严，也解释了为什么本项目把"10°"和"0.5 m"并列放进门限。
+
+**节点的伪代码（教学示例，非项目源码）**：
+
+```python
+class MapOdomManager:
+    def __init__(self):
+        self.T_pub = SE2(0.0, 0.0, 0.0)      # 已发布的 map->odom
+        self.T_target = SE2(0.0, 0.0, 0.0)   # 最近一次被接受的目标
+        self.pending = 0
+
+    def on_amcl(self, msg, T_odom_base_at_stamp):
+        T_map_base = SE2.from_pose(msg.pose.pose)
+        T_new = T_map_base * T_odom_base_at_stamp.inverse()
+        d = (T_new.xy - self.T_pub.xy).norm()
+        a = wrap(T_new.yaw - self.T_pub.yaw)
+        cov_tr = msg.pose.covariance[0] + msg.pose.covariance[7]
+        if d > 0.5 or abs(a) > deg2rad(10):
+            self.pending += 1
+            if self.pending < 3 or cov_tr > 0.3:
+                return                     # 暂不接受
+        else:
+            self.pending = 0
+        self.T_target = T_new
+
+    def on_timer(self, v_abs, dt):
+        r = min(max(0.2 * v_abs, 0.05), 0.20)
+        delta = self.T_target.xy - self.T_pub.xy
+        step = min(delta.norm(), r * dt)
+        if delta.norm() > 1e-9:
+            self.T_pub.xy += delta / delta.norm() * step
+        dyaw = wrap(self.T_target.yaw - self.T_pub.yaw)
+        self.T_pub.yaw += max(-0.15 * dt, min(0.15 * dt, dyaw))
+        self.publish(self.T_pub)
+```
+
+**验证办法**：（1）单元测试：给一个 0.3 m 的阶跃目标，检查节点输出的相邻差始终不超过 $r\Delta t$，且最终收敛到目标；（2）回放测试：回放含跳变的 bag，对比平滑前后 `map→odom` 的 `find_steps` 结果，期望平滑后相邻周期阶跃小于 0.05 m（自查表第 12 项的验收标准）；（3）实车测试：直接观察 MPC 转角指令的 $\Delta\delta$ 直方图，大于 0.05 rad 的次数应显著减少。
+
+---
+
+## 13. 日志判读示例：三份典型 `map→odom` 序列
+
+下面是三份教学用的序列（时间、x、y、yaw 角度），用来练习"看一眼就分类"。
+
+**序列 A（漂移累积后被纠正）**：
+
+```text
+t(s)   x(m)    y(m)   yaw(deg)
+10.0  -0.012   0.020   0.4
+10.1  -0.012   0.020   0.4
+...                                 (停了 8 s 没更新, 因为车几乎没动, 未达 update_min_d)
+18.0  -0.012   0.020   0.4
+18.1  -0.140   0.071   1.1         <- 一个台阶: 0.14 m, 0.7 deg
+18.2  -0.140   0.071   1.1
+```
+
+特征：台阶发生在 AMCL 更新点，大小与上次修正以来的行驶距离近似成正比（走了约 12 m，漂了 1% 就是 0.12 m），方向稳定。这是**正常现象**，对策是平滑，不是调数据。
+
+**序列 B（转弯时时间戳错位）**：
+
+```text
+t(s)   x(m)    y(m)   yaw(deg)   车辆角速度 (deg/s)
+30.0   0.100   0.030   0.5        2
+30.5   0.102   0.031   0.5        3
+31.0   0.180   0.095   3.8        25   <- 开始转弯
+31.5   0.050   -0.060 -2.9        32
+32.0   0.210   0.110   4.2        30   <- 来回晃
+```
+
+特征：阶跃大小与角速度成正比，符号来回变（因为每帧观测的拖影方向不同）。60 ms 的时间戳偏差，在 30 deg/s 的角速度下等效 $30\times0.06=1.8°$ 的角度偏差，在 5 m 外的墙体上就是 $5\times\tan1.8°\approx0.16$ m 的横向偏差——数量级与序列 B 的台阶一致。对策：统一时间戳（03 章）。
+
+**序列 C（倒车方向符号错）**：
+
+```text
+t(s)   x(m)    y(m)   yaw(deg)   挡位
+50.0   1.00    0.50    1.0       前进
+50.5   1.00    0.50    1.0       前进
+51.0   1.15    0.52    1.2       倒车开始
+51.5   1.55    0.60    1.9       倒车
+52.0   2.10    0.70    2.6       倒车     <- x 随倒车距离单调增加, 持续漂
+```
+
+特征：只有倒车段出现，且台阶总是同一个方向（因为 odom 把倒车当作前进，每走一米多出两米的距离差，AMCL 每次更新把它拉回一点）。对策：方向符号（02/03/05 章）。
+
+> **面试要点**：能说出"我不是先调 AMCL 参数，而是先看这条序列的形状"，会明显加分。形状和成因是一一对应的：随行驶距离走的是漂移，随角速度走的是时间，只在倒车的是符号，固定偏移的是静态变换，两个值来回闪的是重复发布。
+
+---
+
+## 14. 重定位、丢失与安全降级
+
+连续状态接口里有一个 `valid`，这里说明它什么时候变假、变假之后系统怎么办，这是"状态可信"链路的最后一环。
+
+| 触发条件 | 检测方法 | 动作 |
+|---|---|---|
+| `/amcl_pose` 超过 1 s 没更新（车在动） | 修正管理节点内的看门狗 | 继续用最后一个 `map→odom`，`valid` 仍为真，但上调定位不确定度；3 s 仍无更新则降速 |
+| 协方差迹 > 0.3 持续 2 s | 读 `amcl_pose.covariance` | `valid=false`，MPC 速度上限降到 0.2 m/s，任务层暂停发新目标 |
+| 候选修正超过门限且未确认 | 门限逻辑的 `pending` 计数 | 不应用，累计到 3 次若协方差仍大则触发全局重定位（`reinitialize_global_localization` 服务） |
+| 全局重定位后位姿跳 > 1 m | 对比重定位前后 | 停车、清空局部代价地图、取消当前导航，等待操作员确认 |
+| EKF 输入缺失（IMU 或轮速超过 100 ms 没来） | EKF 的诊断话题 `/diagnostics` | 立即 `valid=false`，MPC 减速停车，不等定位 |
+
+**为什么重定位后要停车？** 因为重定位后 $T_{map\,odom}$ 可能一次改变 1 m 以上，全局路径在 odom 系的表达整体平移，TEB 与 MPC 的参考作废。继续行驶只会把一个错误的状态放大。自查表第 22 项里的两次失败之一"玻璃门处重定位错误"就属于这一类——这次失败里，门限逻辑拒绝了一次大跳变，但随后连续 3 次一致地给出了错误的簇，协方差也很小（玻璃门让激光看到的是对面的墙，匹配得非常自信），于是系统接受了错误的重定位。教训是：协方差小不等于对，在玻璃多的场景要给地图加"虚拟墙"或限制全局重定位的使用，这一点在 [11 章](./11_联调与故障案例.md) 的复盘里也提到。
+
+---
+
+## 15. 面试问答 / 要点速记 / 自测题 / 链接
 
 ### 面试问答
 
@@ -293,4 +492,5 @@ def find_steps(log, d_thr=0.05, a_thr=0.02):
 
 - 上一章：[05 AMCL](./05_AMCL粒子滤波定位.md)　下一章：[07 代价地图与车体外形](./07_代价地图与车体外形.md)
 - 联调案例：[11 联调与故障案例](./11_联调与故障案例.md)
+- 工程化：[20 工程化实践](./20_工程化实践_频率周期与问题解决.md)
 - 返回：[README](./README.md)

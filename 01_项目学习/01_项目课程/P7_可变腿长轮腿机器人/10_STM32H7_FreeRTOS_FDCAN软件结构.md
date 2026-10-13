@@ -112,7 +112,7 @@ typedef struct {
 STM32H7 的 FDCAN 外设有独立的消息 RAM，需要配置：
 
 - **位时序**：以核时钟 80 MHz 为例，预分频 5，时间量子 16 个（同步 1 + 段 1 为 13 + 段 2 为 2），得到 $80/5/16=1$ Mbps，采样点 $(1+13)/16=87.5\%$。
-- **帧格式**：本项目关节电机为经典 CAN 8 字节帧（`FDCAN_FRAME_CLASSIC`），因为电机固件按经典帧；若电机支持 CAN FD，可开 BRS 加速数据相位。
+- **帧格式**：本项目关节电机为经典 CAN 8 字节帧（`FDCAN_FRAME_CLASSIC`），因为电机固件按经典帧；本项目不使用 CAN FD，也不开 BRS。
 - **过滤器**：只接收电机反馈 ID 段，其余丢弃，减轻中断负担。
 - **发送**：`HAL_FDCAN_AddMessageToTxFifoQ`，每次检查返回值与 FIFO 是否已满，满则计入丢帧计数；
 - **接收**：RX FIFO0 新消息回调，只做解码与记录时间戳；
@@ -166,7 +166,7 @@ byte4: kp[7:0]     byte5: kd[11:4]    byte6: kd[3:0] | tor[11:8]   byte7: tor[7:
 - **一路总线：4 个关节命令 + 4 个反馈 = 8 帧**，约 0.89–1.08 ms，占 2 ms 周期的 44%–54%；
 - 如果 6 个电机（4 关节 + 2 轮）全在一路：12 帧，1.33–1.62 ms，占 67%–81%，余量不足，一旦重发或出现 bus 错误就会丢帧；
 - **本项目方案**：关节一路 FDCAN、轮一路 FDCAN，各约 50% 负载；
-- 若要 1 kHz 控制：8 帧 ≈ 1 ms 占满整个周期，必须降帧数或使用 CAN FD 数据相位加速。
+- 若要 1 kHz 控制：8 帧 ≈ 1 ms 占满整个周期，必须降帧数、降回复频率或再拆一路总线（本项目不使用 CAN FD）。
 
 细节与脚本见 [13](./13_手算与数值验证附录.md)。
 
@@ -193,6 +193,72 @@ byte4: kp[7:0]     byte5: kd[11:4]    byte6: kd[3:0] | tor[11:8]   byte7: tor[7:
 4. **日志**：每周期把状态、力矩、模式、周期用时写入环形缓冲，监控任务低速上传，用于 [11](./11_调试与故障手册.md) 的定位；
 5. **与算法的接口**：算法层只读快照、只写"关节力矩数组"，不直接碰 HAL；这样把算法在 PC 上仿真和上机共用一份代码。
 
+## 深入专题：STM32H7 上容易踩的四个底层细节
+
+前面各节讲的是任务和数据流。真正在 STM32H7 上做过的人都知道，下面四件事不写清楚，系统会"偶尔"出问题，而且很难复现。取值同样是本项目的设计取值。
+
+### A. FDCAN 位时序：1 Mbps 是怎么凑出来的
+
+FDCAN 外设的内核时钟取 80 MHz（来自 PLL，单独配置）。位时间由时间量子（tq）拼成：预分频 5 得到 16 MHz，即 1 tq = 62.5 ns；每位 16 tq，分配为同步段 1、相位段 1 共 13、相位段 2 共 2，采样点在 $(1+13)/16=87.5\%$ 处，位时间恰为 $16\times62.5\ \mathrm{ns}=1\ \mu s$。再设重同步跳转宽度 1–2 tq。87.5% 的采样点是经典 CAN 的常用推荐值，兼顾总线长度（本项目总线不超过 0.5 m）和抗干扰。两路 FDCAN 用同一组位时序，因此总线负载手算可以直接用 1 µs/位。
+
+注意区别：配置的是**标称位时序**（Nominal），因为本项目是经典帧、没有 BRS，不使用数据相位时序（Data），也不开 `FDCAN_FRAME_FD_BRS`。
+
+### B. 中断优先级与 FreeRTOS 的约束
+
+Cortex-M7 的 NVIC 优先级数值越小越高，而 FreeRTOS 规定：凡是调用 `...FromISR` 的中断，其优先级数值必须不小于 `configMAX_SYSCALL_INTERRUPT_PRIORITY`，否则内核无法屏蔽它，导致随机崩溃。本项目的分配：
+
+| 中断 | 抢占优先级 | 说明 |
+|---|---|---|
+| 硬件定时器（周期触发） | 5 | 给控制任务发信号量，调用 `FromISR`，数值须满足约束 |
+| FDCAN1/2 接收 | 6 | 接收后只做解码与时间戳 |
+| SPI DMA 完成（IMU） | 6 | 通知 IMU 任务 |
+| 串口 DMA（日志） | 10 | 最低，丢一点也无所谓 |
+| HardFault/看门狗 | 0 | 不受 FreeRTOS 屏蔽，进入后立即失能电机 |
+
+经验：宁可让接收中断优先级稍低，也不要让它的执行时间变长；它只允许做几十微秒的事。
+
+### C. 缓存一致性：H7 独有的坑
+
+STM32H7 有 D-Cache 和 DMA。IMU 的 SPI 接收缓冲如果放在启用缓存的 SRAM 里，DMA 写进去的新数据，CPU 读到的可能还是缓存里的旧值——表现为 IMU 数据"偶尔卡一拍"，姿态出现台阶。解决有两种做法：
+
+1. **缓冲放进不可缓存的 MPU 区域**（如 D2 域 SRAM，配置为 Non-cacheable）；或
+2. **DMA 完成后先 `SCB_InvalidateDCache_by_Addr`，再读缓冲**；发送缓冲则相反，写完后 `SCB_CleanDCache_by_Addr`。
+
+本项目采用第一种：IMU 和 CAN 的缓冲统一放在专用的不可缓存段，链接脚本里单独命名，避免日后有人把缓冲移位后又踩坑。FDCAN 的消息 RAM 本身在外设内部，不受 D-Cache 影响，但拷贝出来的帧结构还是普通内存。
+
+### D. 周期预算与栈余量
+
+控制任务一个周期的执行预算（设计取值，最坏情况）：
+
+| 步骤 | 预算 |
+|---|---|
+| 取快照与过期检查 | 20 µs |
+| 运动学与雅可比（含 `sinf/cosf/atan2f`） | 120 µs |
+| 状态估计 | 60 µs |
+| 模式判断（含 $F_N$ 估计） | 30 µs |
+| LQR（2×6 乘加 + 12 个三次多项式） | 40 µs |
+| 腿长 PID、VMC | 60 µs |
+| 限幅、量化、CAN 入队 | 50 µs |
+| **合计** | **约 380 µs** |
+
+约占 2 ms 周期的 19%，加上 IMU、CAN 中断、监控任务的占用，CPU 总负载设计在 40% 以下。FreeRTOS 任务的栈用 `uxTaskGetStackHighWaterMark` 查剩余，要求至少留 25% 余量，否则 `printf` 一类的调试输出就可能把栈撑爆；本项目控制任务栈 4 KB，实测水位应在 2.8 KB 以内（设计目标）。浮点运算要启用硬件 FPU，并在任务创建时确保 FPU 上下文保存（`portFPU` 相关配置），否则任务切换时浮点寄存器被破坏，会出现"数值随机跳"的现象。
+
+> **一句话**：H7 的难点不在算力，而在时钟树、缓存、中断优先级这三类"配置性"问题；它们一次配对，之后就是稳定的。
+
+---
+
+## 补充：上电自检的时间线
+
+本项目从上电到可以平衡的顺序（设计取值）：0 ms 时钟与外设初始化；约 200 ms 创建任务并启动 FreeRTOS；约 500 ms 两路 FDCAN 启动，逐个电机发使能帧，每个间隔 5 ms，等待首帧反馈，超时 100 ms 则报警；约 1.5 s IMU 静止零偏采样 1 s；约 2 s 进入位置模式把腿收到初始姿态；约 4 s 校验符号核对项与数据年龄，全部通过后才允许遥控使能；使能后切换到力矩模式，起始 200 ms 内限幅按线性斜坡放宽。任何一步失败，保持零力矩并通过指示灯报告。把这个时间线固定下来，现场出现"上电后偶尔不能使能"时，可以逐步比对日志时间戳，而不是凭印象猜。
+
+---
+
+## 补充：为什么把"算法层不碰 HAL"当作硬规则
+
+这条规则看似只是代码风格，实则带来三处工程收益：一，同一份算法源码可以编译到 PC 做仿真和日志回放，保证"仿真与实机用同一份代码"；二，换电机或换总线时只改驱动层，算法层的测试不用重做；三，审查者只需要读驱动层就能确认有没有违反实时性（阻塞调用、动态内存）。本项目的做法是：算法层只有纯函数和固定大小的结构体，不使用 `malloc`，不调用任何 HAL 或 RTOS API，所有输入输出通过快照结构体和命令结构体传递。
+
+---
+
 ## 11. 常见错误
 
 | 现象 | 原因 | 对策 |
@@ -213,7 +279,7 @@ byte4: kp[7:0]     byte5: kd[11:4]    byte6: kd[3:0] | tor[11:8]   byte7: tor[7:
 （中文：控制任务算力矩、限幅、量化、打包 8 字节、加节点 ID、入 FDCAN 发送队列；电机回传位置速度力矩，接收中断解码并打时间戳。）
 
 **Q2. What is the risk of a high control rate on CAN?**
-> Bus load: eight 8-byte frames take about a millisecond at 1 Mbps, so a 2 millisecond cycle is already about half used. For a higher rate I would need CAN FD or fewer frames, so I put joints and wheels on two buses.
+> Bus load: eight 8-byte frames take about a millisecond at 1 Mbps, so a 2 millisecond cycle is already about half used. For a higher rate I would cut the frame count or add a bus, not change the frame format, so I put joints and wheels on two buses.
 
 **Q3. How do you make sure the controller does not use stale data?**
 > Every feedback has a timestamp and a counter. At the start of each cycle the control task takes one snapshot and checks the age. If a motor is older than three cycles I command zero torque for it and, if it persists, go to a safe mode.

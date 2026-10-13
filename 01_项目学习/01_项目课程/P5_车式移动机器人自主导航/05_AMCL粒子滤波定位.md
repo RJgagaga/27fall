@@ -30,8 +30,9 @@
 9. 初始位姿
 10. AMCL 的输出：位姿估计与 map→odom
 11. 参数速查与车式小车的注意点
-12. 失效模式与故障现象
-13. 面试问答 / 要点速记 / 自测题 / 链接
+12. 在 ROS2 里怎么配置 nav2_amcl（与上表的名字对照）
+13. 失效模式与故障现象
+14. 面试问答 / 要点速记 / 自测题 / 链接
 
 ---
 
@@ -308,7 +309,74 @@ AMCL 每处理一帧激光（受 `update_min_d/a` 门限）才更新一次，更
 
 ---
 
-## 12. 失效模式与故障现象
+## 12. 在 ROS2 里怎么配置 nav2_amcl（与上表的名字对照）
+
+上一节的参数名沿用了经典 `amcl` 的叫法（`odom_alpha1`、`laser_max_beams`、`odom_model_type`）。`nav2_amcl` 的 YAML 里同一批量换了名字，面试时说"我用的是 `nav2_amcl`"，就要能报出这一套。
+
+| 经典 amcl 名 | `nav2_amcl` 名 | 本项目取值 |
+|---|---|---|
+| `odom_alpha1…4` | `alpha1…4` | 0.15 / 0.10 / 0.20 / 0.10 |
+| `odom_model_type: diff` | `robot_model_type: "nav2_amcl::DifferentialMotionModel"` | 差速里程模型 |
+| `laser_model_type` | `laser_model_type: "likelihood_field"` | 似然场 |
+| `laser_max_beams` | `max_beams` | 60 |
+| `laser_z_hit` / `laser_z_rand` / `laser_sigma_hit` | `z_hit` / `z_rand` / `sigma_hit` | 教学量级 0.95 / 0.05 / 0.2 |
+| `odom_frame_id`、`base_frame_id`、`global_frame_id` | `odom_frame_id`、`base_frame_id`、`global_frame_id` | `odom`、`base_link`、`map` |
+| `transform_tolerance` | `transform_tolerance` | 0.3 s |
+| （无） | `scan_topic` | `/scan` |
+| （无） | `tf_broadcast` | 本项目关掉，由平滑节点发布（见 [06 章](./06_EKF与AMCL协同_TF分工与连续状态.md) 第 11 节） |
+
+```yaml
+amcl:
+  ros__parameters:
+    use_sim_time: false
+    min_particles: 500
+    max_particles: 3000
+    pf_err: 0.05
+    pf_z: 0.99
+    alpha1: 0.15
+    alpha2: 0.10
+    alpha3: 0.20
+    alpha4: 0.10
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    laser_model_type: "likelihood_field"
+    max_beams: 60
+    update_min_d: 0.15
+    update_min_a: 0.2
+    resample_interval: 1
+    transform_tolerance: 0.3
+    recovery_alpha_slow: 0.001
+    recovery_alpha_fast: 0.1
+    tf_broadcast: false
+    set_initial_pose: true
+    initial_pose: {x: 0.0, y: 0.0, z: 0.0, yaw: 0.0}
+    scan_topic: scan
+```
+
+（以上字段名取自公开文档的常见写法，具体字段与默认值随版本而异，属"未核对"，以所用版本的文档为准。）
+
+**与生命周期的关系**：`nav2_amcl` 在 `activate` 之前不订阅、不发布。若 `set_initial_pose: true`，激活后会以 `initial_pose` 作为首个位姿；否则要等 RViz 的 `2D Pose Estimate` 或任务节点发布到 `/initialpose`。启动脚本必须保证 `map_server` 先于 `amcl` 激活（`lifecycle_manager_localization` 的 `node_names` 列表顺序即是启动顺序）。
+
+### 12.1 更新节奏：AMCL 到底多快
+
+AMCL 不是定频运行，而是**由运动触发**：当里程计相对上一次更新的位移超过 `update_min_d`（0.15 m）或转角超过 `update_min_a`（0.2 rad）时，才对下一帧激光做一次完整的"运动更新 + 观测更新 + 重采样"。因此更新频率取决于车速：
+
+| 车速 | 触发间隔（位移触发） | 受激光 10 Hz 限制后的实际频率 |
+|---|---|---|
+| 0.3 m/s | $0.15/0.3=0.5$ s | 2 Hz |
+| 0.5 m/s | 0.3 s | 约 3.3 Hz（实际落到下一帧激光，约 3.3 Hz） |
+| 0.8 m/s | 0.19 s | 约 5 Hz（激光周期 0.1 s 取整为 0.2 s） |
+| 原地转 0.5 rad/s | $0.2/0.5=0.4$ s | 2.5 Hz |
+| 静止 | 不触发 | 0 |
+
+静止时 AMCL 不更新，这既省算力，也避免粒子在无信息时因噪声而"游走"。但它也解释了一个现象：车刚起步的前 0.15 m 里，`map→odom` 保持不变，完全由 EKF 的积分支撑。
+
+### 12.2 单次更新的耗时与粒子数
+
+单次更新的计算量约为 粒子数 $\times$ 束数 $\times$ 一次查表：3000 粒子 × 60 束 = 18 万次查表，加上采样和重采样，在 x86 上约 1–3 ms（量级估算）；500 粒子时更低。KLD 采样让粒子数在定位收敛后落在下限附近，所以稳定行驶时每次更新约不到 1 ms，只有在重定位、粒子数拉满时才升到几 ms。这个量级远小于 100 ms 的激光周期，所以 AMCL 不需要为算力放弃束数，`max_beams: 60` 主要是为了让粒子之间的差异更多地来自"不同方位的束"，而不是密集冗余的相邻束。
+
+---
+
+## 13. 失效模式与故障现象
 
 | 现象 | 原因 | 判断与处理 |
 |---|---|---|
@@ -324,7 +392,7 @@ AMCL 每处理一帧激光（受 `update_min_d/a` 门限）才更新一次，更
 
 ---
 
-## 13. 面试问答 / 要点速记 / 自测题 / 链接
+## 14. 面试问答 / 要点速记 / 自测题 / 链接
 
 ### 面试问答
 
@@ -371,4 +439,5 @@ AMCL 每处理一帧激光（受 `update_min_d/a` 门限）才更新一次，更
 
 - 上一章：[04 EKF 融合定位](./04_EKF融合定位.md)　下一章：[06 EKF 与 AMCL 协同](./06_EKF与AMCL协同_TF分工与连续状态.md)
 - 基础：[../../02_基础知识/05_状态估计/05_粒子滤波与AMCL.md](../../02_基础知识/05_状态估计/05_粒子滤波与AMCL.md)
+- 工程化（频率、延迟、调参过程）：[20 工程化实践](./20_工程化实践_频率周期与问题解决.md)
 - 返回：[README](./README.md)

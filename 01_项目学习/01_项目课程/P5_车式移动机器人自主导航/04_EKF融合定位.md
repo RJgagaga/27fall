@@ -33,7 +33,8 @@
 10. robot_localization 的典型配置思路
 11. 调参方法与一致性检验
 12. 常见错误与故障现象
-13. 面试问答 / 要点速记 / 自测题 / 链接
+13. EKF 的频率、延迟与输出时刻：ROS2 里的几个关键参数
+14. 面试问答 / 要点速记 / 自测题 / 链接
 
 ---
 
@@ -353,35 +354,40 @@ AMCL 的位姿时间戳是激光扫描时间，到达 EKF 时已比当前状态�
 ### 10.3 YAML 示例（教学示例，非项目配置）
 
 ```yaml
-# ekf_odom: continuous odom -> base_link
-frequency: 50
-sensor_timeout: 0.1
-two_d_mode: true
-publish_tf: true
-map_frame: map
-odom_frame: odom
-base_link_frame: base_link
-world_frame: odom
+# ekf.yaml (ROS2): continuous odom -> base_link
+# 启动: ros2 launch <pkg> localization.launch.py params_file:=ekf.yaml
+ekf_filter_node:
+  ros__parameters:
+    frequency: 50.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
 
-odom0: /wheel_odom
-odom0_config: [false, false, false,   # x y z
-               false, false, false,   # roll pitch yaw
-               true,  false, false,   # vx vy vz
-               false, false, false,   # vroll vpitch vyaw
-               false, false, false]   # ax ay az
-odom0_queue_size: 10
-odom0_twist_rejection_threshold: 5.0
+    odom0: /wheel_odom
+    odom0_config: [false, false, false,   # x y z
+                   false, false, false,   # roll pitch yaw
+                   true,  false, false,   # vx vy vz
+                   false, false, false,   # vroll vpitch vyaw
+                   false, false, false]   # ax ay az
+    odom0_queue_size: 10
+    odom0_twist_rejection_threshold: 5.0
 
-imu0: /imu/data
-imu0_config: [false, false, false,
-              false, false, false,
-              false, false, false,
-              false, false, true,     # vyaw from gyro
-              true,  false, false]    # ax (optional)
-imu0_remove_gravitational_acceleration: true
-imu0_queue_size: 20
-# process_noise_covariance / initial_estimate_covariance: 15x15, set from calibration
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,     # vyaw from gyro
+                  true,  false, false]    # ax (optional)
+    imu0_remove_gravitational_acceleration: true
+    imu0_queue_size: 20
+    # process_noise_covariance / initial_estimate_covariance: 15x15, set from calibration
 ```
+
+> **ROS2 说明**：ROS2 的参数 YAML 必须以节点名开头并带 `ros__parameters`（节点名要与 launch 里 `Node(name=...)` 一致，否则参数不生效）；`robot_localization` 在 ROS2 里的可执行文件是 `ekf_node`（包 `robot_localization`），滤波结果发布在 `odometry/filtered`，需要在 launch 里 remap 成项目约定的话题名。传感器输入话题的 QoS 要与驱动匹配。
 
 要点：`two_d_mode: true` 把 $z$、roll、pitch 及其导数固定为 0；`world_frame: odom` 表示该滤波器在里程系工作，发布 `odom→base_link`；若再启一个 `world_frame: map` 的滤波器并输入 AMCL 位姿，则发布 `map→odom`（双 EKF 结构）。
 
@@ -451,7 +457,61 @@ CV 写的是 "EKF/AMCL localisation ... output a continuous vehicle state"。本
 
 ---
 
-## 13. 面试问答 / 要点速记 / 自测题 / 链接
+## 13. EKF 的频率、延迟与输出时刻：ROS2 里的几个关键参数
+
+前面讲的是滤波器本身。工程上，EKF 节点的"节奏"同样决定控制是否平稳。本项目的 EKF 取 30 Hz（自查表第 10 项），下面解释这个数字背后的几个量，以及 `robot_localization` 在 ROS2 里对应的参数（参数名为公开包的常见写法，随版本可能变化，属"未核对"）。
+
+### 13.1 三个"频率"要分清
+
+| 量 | 本项目取值 | 含义 |
+|---|---|---|
+| 传感器到达频率 | IMU 100 Hz、轮速 50 Hz | 每条消息到达时，按它自己的时间戳做一次预测+更新 |
+| 滤波器输出频率（`frequency`） | 30 Hz | 节点主循环的节拍：每个节拍把状态预测到"当前时刻"并发布 `odom→base_link` 与 `/odometry/filtered` |
+| 下游使用频率 | MPC 20 Hz、TEB 10 Hz、局部代价地图 10 Hz | 它们按自己的定时器读取最新状态 |
+
+所以不存在"IMU 100 Hz 被降采样到 30 Hz 丢数据"：每条 IMU 消息都参与了更新，30 Hz 只是**输出**的节拍。为什么不直接取 100 Hz？一是 MPC 只有 20 Hz，输出 30 Hz 已经让它每个周期至少拿到一个新状态；二是 TF 消息在 `/tf` 上广播，频率越高，所有监听 TF 的节点负担越大（每个节点都要接收、缓存）；三是留出算力余量。反过来为什么不低于 20 Hz？输出频率若等于控制频率，两个定时器的相位漂移会让某些周期读到的是"上一拍"的旧状态，等效增加最多一个输出周期的延迟（20 Hz 时 50 ms，30 Hz 时 33 ms）。取 30 Hz 把这个最坏延迟压到 33 ms。
+
+### 13.2 `sensor_timeout`、`predict_to_current_time`、`transform_time_offset`
+
+```yaml
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1          # 超过 0.1 s 没有任何测量，就只做预测并继续按节拍发布
+    two_d_mode: true
+    publish_tf: true
+    predict_to_current_time: true   # 输出时把状态预测到"当前"而非最后一条测量的时刻
+    transform_time_offset: 0.0      # 给发布的 TF 时间戳加偏移，通常保持 0
+    transform_timeout: 0.0
+    print_diagnostics: true
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+```
+
+- `sensor_timeout`：测量中断的容忍时间。到了超时，滤波器仍按节拍预测，但协方差会随时间增大，而下游应当看到 `valid=false`。取 0.1 s 是因为 IMU 100 Hz、轮速 50 Hz，超过 100 ms 没有任何输入已是明显故障；
+- `predict_to_current_time`：当最后一条测量是 15 ms 之前，输出的状态若不外推，就比"现在"落后 15 ms，0.5 m/s 时是 7.5 mm，可忽略，但在 0.8 m/s 转弯加上其他延迟时叠加；本项目打开它；
+- `transform_time_offset`：用来把发布的 TF 时间戳向未来推一点（类似 AMCL 的 `transform_tolerance`）。如果消费者总在报"外推到未来"，应当先找时间戳问题，而不是用它掩盖。
+
+### 13.3 一次节拍的时间线
+
+```text
+t0        IMU(100Hz) 到达 -> 预测到 t0 -> 更新(陀螺) 
+t0+10ms   IMU 到达 -> 更新
+t0+20ms   轮速(50Hz) 到达 -> 预测到 t0+20 -> 更新(v)
+t0+33ms   节拍到 -> 预测到当前时刻 -> 发布 odom->base_link + /odometry/filtered
+...
+```
+
+一次预测+更新对 15 维状态（本项目的 2D 模式下有效维度约 6）的计算量是 $O(n^3)$ 的矩阵乘法，$n=15$ 时约 $15^3\approx3400$ 次乘加，每条消息远低于 0.1 ms。结论：**EKF 不是算力瓶颈**，它的限制来自输入质量与时间戳，而不是 CPU。
+
+### 13.4 一致性检验：把 NIS 接进诊断
+
+第 11 节讲了创新的一致性检验。落地方式：节点打开 `print_diagnostics`，另写一个监控节点订阅创新（或自己离线从 bag 里算），统计滑动窗口内 NIS 的均值。NIS 应当围绕测量维数波动（例如 1 维测量均值约 1）。均值长期远大于 1：$R$ 或 $Q$ 偏小，滤波器过于自信；远小于 1：偏保守。本项目把这个检查放进每次实车调参后的固定验收（见 [20 章](./20_工程化实践_频率周期与问题解决.md)）。
+
+---
+
+## 14. 面试问答 / 要点速记 / 自测题 / 链接
 
 ### 面试问答
 

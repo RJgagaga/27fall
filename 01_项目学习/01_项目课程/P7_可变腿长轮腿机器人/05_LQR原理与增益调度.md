@@ -472,6 +472,60 @@ $\mathbf s_{ref}=[0,\ 0,\ x_{set},\ v_{set},\ 0,\ 0]^\top$：
 
 ---
 
+## 12.5 稳定性与鲁棒性深挖（面试深挖层）
+
+### 12.5.1 回差不等式与 60° 相位裕度的来源
+
+把控制器 $\mathbf u=-K\mathbf s$ 在输入处断开，回路传递函数为 $L(s)=K(sI-A)^{-1}B$。LQR 有一个著名的**回差（return difference）不等式**：
+
+$$
+\big(I+L(j\omega)\big)^{*}R\,\big(I+L(j\omega)\big)\succeq R,\qquad \forall\omega
+$$
+
+单输入时就是 $|1+L(j\omega)|\ge1$：Nyquist 曲线永远在以 $-1$ 为圆心、半径 1 的圆**外面**。这个圆给出两条保证：增益可以在 $(1/2,\infty)$ 内任意变化而不失稳；相位可以滞后至少 $60^\circ$。
+
+**用标量例子验证（教学示例）**：$a=b=q=r=1$，$K=2.414$，$L(s)=\dfrac{2.414}{s-1}$。
+
+1. 回差：$1+L=\dfrac{s+1.414}{s-1}$，$|1+L(j\omega)|=\sqrt{\dfrac{\omega^2+2}{\omega^2+1}}\ge1$，成立。
+2. 增益裕度：把增益乘 $k$，闭环极点 $1-2.414k<0$ 要求 $k>0.414$，即**下裕度** $-7.7$ dB，上裕度无穷。
+3. 相位裕度：令 $|L|=1$，$\omega^2+1=2.414^2=5.83$，$\omega=2.2$ rad/s；此处 $L$ 的相角 $=-(180^\circ-\arctan2.2)=-114.5^\circ$，所以相位裕度 $=65.5^\circ\ge60^\circ$。
+
+> **注意**：这个保证只对**连续时间、状态全可测、模型准确、输入端无延迟与饱和**成立。实机的电机延迟、2 ms 离散化、状态估计器、力矩限幅都会吃掉裕度，所以"LQR 有 60° 裕度"不能当作实机的承诺。面试里可以这样答：理论裕度是上界，实机裕度要靠改变增益缩放做阶跃与扰动试验来看。
+
+### 12.5.2 增益"缩放"试验：实机怎么量裕度
+
+没有 Bode 仪时，工程上用**增益缩放试验**当作裕度的替代：把 $K$ 整体乘 $\alpha$，观察何时开始振荡（上界）、何时恢复变慢并倒下（下界）。本项目的做法是：吊起悬空后触地，从 $\alpha=1$ 起以 $0.1$ 为步长上调，直到高频抖动出现，记下 $\alpha_{\max}$；再下调到跟不住指令，记 $\alpha_{\min}$。我们的取值目标是 $\alpha\in[0.6,1.5]$ 内都能站稳，这是对"理论下裕度 0.5"留有余量的实机版本（设计目标，非实测值）。
+
+### 12.5.3 离散化手算：为什么 2 ms 周期下仍可用连续 K
+
+教学例子（标量，$a=b=1$）。取采样周期 $T_s=0.1$ s，零阶保持离散化：
+
+$$
+A_d=e^{aT_s}=1.1052,\qquad B_d=\frac{e^{aT_s}-1}{a}\,b=0.1052
+$$
+
+离散代价取 $q_d=r_d=1$，迭代 DARE $p=q_d+A_d^2p-\dfrac{(A_dB_dp)^2}{r_d+B_d^2p}$ 得 $p=24.68$，增益
+
+$$
+K_d=\frac{A_dB_dp}{r_d+B_d^2p}=2.253,\qquad \text{闭环极点}=A_d-B_dK_d=0.868
+$$
+
+作为对照，连续极点 $-1.414$ 经 $e^{-1.414\times0.1}=0.868$ 映射，完全吻合。这里有一个常被忽略的点：离散增益 $2.253$ 比连续增益 $2.414$ **略小**。差别来自"采样保持的半拍延迟"，且 $T_s$ 越大差别越大。本项目 $T_s=2$ ms，系统最快闭环时间常数约 4 ms（第 11 节），$T_s$ 与之之比 $=0.5$，所以实际做法是：**用 ZOH 离散化后在离散域重算一遍 K**（离线，开销为零），而不是直接拿连续 K 上线；两者差别在最快极点那一行最大，对低频主导极点几乎无影响。
+
+### 12.5.4 为什么最慢极点比最快极点更需要关注
+
+六个闭环极点 $-239.8,\ -42.9\pm30.6j,\ -7.81,\ -2.84\pm0.17j$ 跨了两个数量级。最快的 $-240$ 是轮子电机动力学量级，对实机来说**已经超出了 500 Hz 控制环能可靠实现的带宽**（Nyquist 角频率 $\pi/T_s=1571$ rad/s，经验上闭环带宽应小于它的 $1/5$，即约 314 rad/s，勉强）。最慢的 $-2.84\pm0.17j$ 则决定位置与速度的回位时间，约 $4/2.84\approx1.4$ s 到 2% 稳态。这是**"实机体验到的慢"**的来源。调参时：想加快回位，调 $Q_x,Q_v$；想减轻高频抖动，调 $R$ 或降低含速度项的权重，而不去碰最快极点。
+
+### 12.5.5 对偶性与"为什么估计器和控制器能分开设计"
+
+LQR 与卡尔曼滤波（Kalman filter）互为对偶：把 $(A,B,Q,R)$ 换成 $(A^\top,C^\top,\ \text{过程噪声协方差},\ \text{量测噪声协方差})$，同一个 Riccati 方程给出最优观测器增益。**分离原理**说：线性高斯系统里，控制器和估计器可以**独立设计**，闭环极点就是两者极点的并集。这是第 8 章把速度估计单独做、LQR 单独做的理论依据。但分离原理同样只在线性、无饱和时严格成立；实机中估计器的延迟会进入回路，所以我们的做法是保证估计器带宽至少是 LQR 主导极点的 5 倍以上（估计器更快，LQR 才不被估计滞后拖累）。
+
+### 12.5.6 积分作用与稳态偏差
+
+标准 LQR 没有积分。平衡点偏置（如质心前移 1.5°）会让 $\phi$ 的稳态误差不为零，表现为机器人缓慢爬行。三种处理：**标定偏置**（本项目的主做法，见 README 案例 A）、**增广积分状态** $\dot z=x-x_{set}$ 重解 LQR（状态变七维，增益需重新调度）、**慢速偏置估计**（对 $\phi$ 的长期均值缓慢更新）。本项目选第一种加有限幅的位置积分，因为它让 12 个增益的结构保持不变，调度表不用改。
+
+---
+
 ## 13. 常见错误与故障现象
 
 | 现象 | 原因 | 处理 |
@@ -513,6 +567,22 @@ $\mathbf s_{ref}=[0,\ 0,\ x_{set},\ v_{set},\ 0,\ 0]^\top$：
 
 > The linear model is valid for small angles. When the torque saturates, the effective gain drops and the loop can lose its margin, so I keep the commands smooth, limit the leg length rate, and treat large disturbances with separate recovery logic. LQR also doesn't know about contact, so I switch modes when the wheel leaves the ground.
 
+**Q6. What stability and robustness guarantees does LQR give, and do they hold on your robot?**
+
+> In continuous time with full state feedback and an exact model, LQR guarantees a stable closed loop and a return difference of at least one, which means a phase margin of at least sixty degrees and gain reduction down to one half with unlimited gain increase. On the real robot these guarantees only hold approximately. There is a two-millisecond discretization, a motor delay, an estimator and torque limits, and all of them eat the margin. So I treat the sixty degrees as an upper bound, and I check the real margin by scaling the whole gain matrix up and down on the robot and watching when oscillation or loss of tracking starts.
+
+（中文：理论保证是上界；实机用整体缩放增益试验查裕度。）
+
+L2 追问：How would you know the gain is too high? → 高频抖动、电机发热/啸叫、速度项在力矩里占比大；降 $Q$ 的速度权重或增大 $R$。
+
+**Q7. Why can you design the estimator and the controller separately?**
+
+> By the separation principle: for a linear system with Gaussian noise the optimal controller and the optimal estimator are dual Riccati problems, and the closed-loop poles are the union of the two sets. In practice I keep the estimator clearly faster than the slowest controller poles, so its lag does not hurt the balance loop, and I check the whole chain on the robot because saturation breaks the linear argument.
+
+**Q8. Your K comes from the continuous model. Is that fine at 500 Hz?**
+
+> Mostly, but not exactly. The slowest and middle poles are far below the Nyquist frequency, so the continuous gain works; the fastest pole is not. I discretize with a zero-order hold and recompute the gain offline in the discrete domain, which costs nothing on the microcontroller.
+
 ---
 
 ## 15. 本章要点速记
@@ -535,6 +605,9 @@ $\mathbf s_{ref}=[0,\ 0,\ x_{set},\ v_{set},\ 0,\ 0]^\top$：
 3. 为什么多输入 LQR 的 $K$ 是 $2\times6$？每一行的含义？（答：每个输入一行，每行六个状态增益。）
 4. 为什么速度偏快时 $T$ 反而为正？（答：非最小相位，需先加速轮子使身体后倾。）
 5. 为什么要把 $L_0$ 限幅在拟合区间？（答：多项式外推误差大，$L_0$ 异常值会产生荒谬增益。）
+6. 标量例 $a=b=q=r=1$ 的相位裕度是多少，怎么算？（答：令 $|L|=1$ 得 $\omega=2.2$，相角 $-114.5^\circ$，裕度 $65.5^\circ$。）
+7. 离散化后增益比连续略小，为什么？（答：采样保持带来半拍延迟，$T_s$ 越大差别越大。）
+8. 实机如何替代 Bode 图测量裕度？（答：整体缩放 $K$，找出开始振荡与跟不住的两端。）
 
 ## 相关链接
 

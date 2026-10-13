@@ -424,6 +424,45 @@ j22 = L4 cos(polar − θ1) sin(θ2 − β) / (radius sin(θ2 − θ1))
 
 左右腿机构镜像，电机安装正方向相反：右腿用 `j` 的一套符号，左腿的 `front/back` 对应的电机不同。**每条腿单独标定零位和符号**，并用第 3 章 7 节的核对清单验证"$F>0$ 时腿是否伸出、$T_p>0$ 时腿是否朝预期方向摆"。
 
+### 9.4 关节力矩限幅时怎么办：饱和下的分配（深挖）
+
+前面的 $\boldsymbol\tau=J_p^\top[F,T_p]^\top$ 没有考虑电机上限。本项目关节软件限幅为 6 N·m（README 自查表）。假设落地冲击时 LQR 与腿长环同时要求 $F=60$ N、$T_p=-8$ N·m，仍用第 7 节姿态，$a=0.09724$，$b=0.39134$：
+
+$$
+\tau_\alpha=-aF+bT_p=-5.834-3.131=-8.965,\qquad \tau_\beta=aF+bT_p=5.834-3.131=2.703
+$$
+
+$\tau_\alpha$ 超限。有两种处理，结果完全不同（教学示例）：
+
+| 方法 | 做法 | 实际作用到腿上的 $(F,T_p)$ | 评价 |
+|---|---|---|---|
+| 逐关节硬截断 | $\tau_\alpha\to-6$，$\tau_\beta$ 不动 | 解 $\begin{bmatrix}-a&b\\a&b\end{bmatrix}\begin{bmatrix}F\\T_p\end{bmatrix}=\begin{bmatrix}-6\\2.703\end{bmatrix}$ 得 $F=44.8$ N，$T_p=-4.21$ N·m | 两个广义力**都被改变且比例变了**：$T_p$ 少了近一半，姿态环被削弱得更厉害 |
+| 等比例缩放 | 两个关节同乘 $s=6/8.965=0.669$ | $F=40.1$ N，$T_p=-5.35$ N·m | 方向保持不变，只是整体变小；但支撑力也跟着降，机身会下沉 |
+
+我们的做法是：先对 $(F,T_p)$ 做**优先级分配**，保证 $T_p$（姿态）优先于 $F$ 的超出部分——也就是先按上式算出 $T_p$ 占用的共模力矩 $bT_p$，剩余的力矩余量留给 $F$ 的差模项，$F$ 被限到 $F_{\max}=(6-|bT_p|)/a$。代入 $T_p=-8\Rightarrow bT_p=-3.131$，$F_{\max}=(6-3.131)/0.09724=29.5$ N。这样 $T_p$ 完整保住，$F$ 降到约 29.5 N（刚好接近单腿静态载荷 29.4 N），机身不会摔，只是起步支撑偏软。最后仍然保留逐关节硬截断作为**最后一道安全限幅**，确保任何情况下不超过电机能力。这套顺序对应 [11](./11_调试与故障手册.md) 中力矩限幅类故障的处理。
+
+> **注意**：优先级分配不是 VMC 本身的内容，是我们在 VMC 之后加的执行层策略。面试被问到 "what if the torque saturates" 时，把这个例子讲出来就是满分的深度回答。
+
+### 9.5 奇异附近：为什么 $J^\top F$ 有限但仍要避开（深挖）
+
+$\det J\propto\sin(\alpha-\theta_1)\sin(\theta_2-\beta)/\sin(\theta_1-\theta_2)$（两个主动杆各自与被动杆的夹角）。腿接近完全伸直时 $\sin(\alpha-\theta_1)\to0$：
+
+1. 沿腿方向要产生速度，需要的关节速度趋于无穷（$J^{-1}$ 爆炸），**位置控制**的 IK 会出现速度尖峰；
+2. 力方向的映射 $J^\top F$ 本身有限，但此方向的支撑力几乎不需要关节力矩——机构靠杆的轴向受力撑住（"锁死"），好处是省电，坏处是**反向的力**（想收腿）需要很大的关节力矩去"破锁"；
+3. 数值上 $J_p$ 的某些元素也会大幅变化，一旦 FK 因噪声略有误差，映射出来的力矩就会尖峰。
+
+所以本项目的工作腿长取 0.10–0.30 m，并把最大腿长限在拟合区间上沿，不靠近完全伸直。上一节的 cond(J) 表就是选这个上限的依据，实机杆长需要同样重算一遍。
+
+### 9.6 误差灵敏度：模型误差对力矩的影响
+
+以第 7 节的姿态为例，$J_{21}\approx0.0972$ m/rad 与杆长 $L_1$ 成正比。如果实机 $L_1$ 比参数大了 2 mm（1.3%），则同样的 $F=40$ N 产生的关节力矩误差约 $0.05$ N·m，对 6 N·m 限幅可忽略；但若某腿的零位偏差 $2^\circ$，$\alpha$ 与 $\beta$ 的代入值同时偏，$\sin(\alpha-\theta_1)$ 的变化可达几个百分点，且会使两条腿的静态力矩不对称，表现为"一条腿软、一条腿硬"（第 10 节）。结论：**零位标定比杆长精度更重要**。
+
+另一项被忽略的误差是**动力学项**。$J^\top F$ 是准静态公式，忽略了腿杆自身惯量。教学估算：腿杆等效质量约 0.25 kg，快速伸缩时加速度 $5\ \mathrm{m/s^2}$，所需额外力约 $1.25$ N，相对静态载荷 29.4 N 仅约 4%，所以不需要做完整的动力学补偿，腿长 PID 就能把这部分吸收掉。若腿伸缩速度很高（跳跃），才需要惯量补偿。
+
+### 9.7 数据链上的延迟与更新顺序
+
+VMC 在一个控制周期里的位置：先取快照（$\alpha,\beta,\dot\alpha,\dot\beta$）→ FK 得 $L_0,\phi_0$ → 算 $J_p$ → 腿长 PID 与 LQR 出 $(F,T_p)$ → $J_p^\top$ → 限幅 → 编码发送。要点：**$J_p$ 必须用本周期的角度算**，不要用上一周期缓存的值——腿伸缩时 $J_p$ 的元素在 2 ms 内变化虽小，但积累的偏差会和 LQR 的高增益项相互作用；而且 FK 与 $J_p$ 必须来自同一份快照，否则就是"状态不一致"（README 案例 A）。
+
 ---
 
 ## 10. 常见错误与故障现象
@@ -461,6 +500,20 @@ j22 = L4 cos(polar − θ1) sin(θ2 − β) / (radius sin(θ2 − θ1))
 
 （这是教学估计；本项目关节限幅取值见 README 自查表。）
 
+**Q5. What do you do when a joint torque exceeds the motor limit?**
+
+> I do not just clip each motor, because clipping changes both the support force and the hip torque and changes their ratio. In a teaching example with a support force of 60 newtons and a pitch torque of minus 8 newton-meters, clipping one joint to 6 newton-meters leaves only about half of the pitch torque. So I first reserve the common-mode torque that the pitch torque needs, give the rest of the margin to the support force, and then keep a per-joint clamp as the last safety layer. The balance is protected first, and the leg becomes a little softer.
+
+（中文：不直接逐电机截断；先保姿态力矩，剩余余量给支撑力，最后一层逐关节限幅。）
+
+**Q6. How accurate does the Jacobian have to be?**
+
+> The zero offset of the joints matters more than the link length. A one-percent error in a link length changes the torque by about one percent, which is tiny compared with the limit, but a two-degree zero offset on one leg makes the two legs produce different forces and the body leans. So I calibrate each leg's zero and sign individually and test with a small constant support force.
+
+**Q7. VMC ignores the leg dynamics. Is that a problem?**
+
+> For the speeds we use it is not. The leg link inertia adds only a few percent of the static load, and the leg-length PID absorbs it. If the robot needed to jump, I would add inertia and Coriolis compensation, or use a whole-body dynamic model.
+
 ---
 
 ## 12. 本章要点速记
@@ -483,6 +536,8 @@ j22 = L4 cos(polar − θ1) sin(θ2 − β) / (radius sin(θ2 − θ1))
 3. 对称姿态下，$F>0$ 与 $T_p>0$ 分别对应两个关节力矩的什么模式？（答：差模；共模。）
 4. 机身 6 kg，一条腿 $J_{21}=-0.0972$ m/rad，求静态支撑的关节力矩。（答：约 2.9 N·m。）
 5. 课程里的 `/1000` 从哪来？（答：$J$ 的 mm 单位到 m 的换算，推算而得。）
+6. $F=60$ N、$T_p=-8$ N·m，第 7 节姿态，关节限幅 6 N·m，求两个关节力矩，并说明为什么逐关节截断不好。（答：$-8.965$ 与 $2.703$；截断后等效 $T_p$ 只剩约 $-4.2$。）
+7. 为什么零位标定比杆长精度更重要？（答：零位偏差使两腿 $J$ 不对称，静态力不等；杆长误差只按比例缩放。）
 
 ## 相关链接
 

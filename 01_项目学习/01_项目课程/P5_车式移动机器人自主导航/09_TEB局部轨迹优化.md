@@ -36,7 +36,8 @@
 13. 与 DWA 的对比；为什么 TEB 之后还要 MPC
 14. 参数速查与调参
 15. 失效模式与故障现象
-16. 面试问答 / 要点速记 / 自测题 / 链接
+16. 在 ROS2 里怎么跑 TEB：形态、话题与周期
+17. 面试问答 / 要点速记 / 自测题 / 链接
 
 ---
 
@@ -390,7 +391,81 @@ DWA 在速度空间 $(v,\omega)$ 采样：只考虑"在接下来一个控制周�
 
 ---
 
-## 16. 面试问答 / 要点速记 / 自测题 / 链接
+## 16. 在 ROS2 里怎么跑 TEB：形态、话题与周期
+
+CV 写的是"TEB 优化时间参数化的局部轨迹，输出连续位姿和曲率参考给控制器"。在 ROS2 Humble 上，`teb_local_planner` 没有随 Nav2 官方发行，需要用社区移植版本（ROS2 移植，具体版本与分支以所用仓库为准，属"未核对"）。它在 Nav2 里的标准形态是 `nav2_core::Controller` 插件，由 `controller_server` 以固定频率调用，并把结果直接变成 `cmd_vel`。本项目的用法与标准形态不同：把 TEB 当作**轨迹生成器**，只取它的轨迹，不取它的速度指令，最终指令由 MPC 给出。
+
+### 16.1 两种集成形态对比
+
+| 项目 | 标准形态（控制器插件） | 本项目形态（轨迹生成器） |
+|---|---|---|
+| 谁定时 | `controller_server`（`controller_frequency`） | TEB 所在节点自己的 10 Hz 定时器 |
+| 输出 | `geometry_msgs/TwistStamped`（速度指令） | 带 `time_from_start` 的轨迹（位姿、速度、曲率） |
+| 下游 | 底盘 | MPC 节点（20 Hz） |
+| 优点 | 与 Nav2 行为树、目标检查器、进度检查器无缝配合 | 速度指令由 MPC 统一做约束与延迟补偿；便于单独回放轨迹 |
+| 缺点 | TEB 的速度指令是对第一段轨迹的一阶差分，缺少延迟补偿 | 需要自己处理"目标到达""卡住"等行为树逻辑（本项目保留 Nav2 的目标检查器与进度检查器，用 TEB 的轨迹末点驱动） |
+
+### 16.2 输入输出与频率
+
+| 方向 | 话题 | 说明 |
+|---|---|---|
+| 订阅 | 全局路径（`nav_msgs/Path`） | 事件触发，≤ 1 Hz，来自 Hybrid-A* |
+| 订阅 | 局部代价地图（`nav2_costmap_2d` 内部直接访问，非话题） | 10 Hz 更新，障碍转成点/线/多边形 |
+| 订阅 | `/odometry/filtered` | 起点位姿与当前速度 |
+| 发布 | `/teb/trajectory` | 10 Hz，带 `time_from_start` |
+| 发布 | `/teb/candidates`（调试） | 各同伦类候选，用于 RViz 与切换统计 |
+
+**10 Hz 怎么来的**：TEB 单次优化（几个同伦候选、几十个位姿、g2o 若干次迭代）在 x86 迷你主机上约 10–30 ms（量级估算），预留近 3 倍余量取 100 ms 周期；再快对 MPC 没有帮助（MPC 每个周期取最新一条并重采样），再慢则对新障碍的反应变迟（见 [07 章](./07_代价地图与车体外形.md) 第 12.3 节的延迟预算）。
+
+### 16.3 参数文件示意（与自查表第 17 项一致）
+
+```yaml
+teb_planner:
+  ros__parameters:
+    teb_autosize: true
+    dt_ref: 0.3
+    dt_hysteresis: 0.1
+    max_samples: 500
+    global_plan_overwrite_orientation: true
+    max_global_plan_lookahead_dist: 3.0
+    feasibility_check_no_poses: 5
+    max_vel_x: 1.0
+    max_vel_x_backwards: 0.3
+    max_vel_theta: 1.0
+    acc_lim_x: 0.8
+    min_turning_radius: 0.80
+    wheelbase: 0.40
+    cmd_angle_instead_rotvel: true
+    footprint_model:
+      type: "two_circles"
+      radius: 0.242
+      front_offset: 0.35
+      rear_offset: -0.05
+    min_obstacle_dist: 0.30
+    inflation_dist: 0.50
+    include_costmap_obstacles: true
+    costmap_obstacles_behind_robot_dist: 1.0
+    weight_optimaltime: 1.0
+    weight_obstacle: 50.0
+    weight_kinematics_nh: 1000.0
+    enable_homotopy_class_planning: true
+    max_number_classes: 4
+    selection_cost_hysteresis: 0.8
+```
+
+（参数名取自公开版本的常见写法，ROS2 移植版的字段层级与命名可能与上不同，属"未核对"；数值是本项目的设计取值。）`selection_cost_hysteresis: 0.8` 的含义是：新候选的代价必须低于当前最优的 80%，也就是低 20% 以上才切换，对应第 12 节"选择滞回"。
+
+### 16.4 轨迹消息的内容
+
+每个轨迹点包含：位姿 $(x,y,\psi)$、线速度 $v$、角速度 $\omega$（或曲率 $\kappa=\omega/v$，低速时保护）、`time_from_start`。MPC 把它当作随时间变化的参考：以当前时刻为 0，在 $t_k=k\times0.1$ s 处取点（线性插值位置，航向用角度插值，点稀疏时用圆弧）。因此 TEB 的**时间参数化**是接口成立的前提：如果轨迹没有时间，MPC 只能"找最近点"，会引入第 9 节说的时间对齐误差。
+
+### 16.5 频率不匹配时会发生什么
+
+TEB 10 Hz、MPC 20 Hz：每两个 MPC 周期才会遇到一条新轨迹。新轨迹和上一条之间的差异（来自新障碍、新的定位修正、同伦类切换）会在新轨迹到达的那个周期突然出现在参考里。我们的缓解有三层：TEB 内部的选择滞回（让类别不乱跳）、MPC 的 $\Delta u$ 惩罚（输出不乱跳）、MPC 对参考做一个很短的过渡（新旧参考在 0.2 s 内线性混合）。如果去掉其中任何一层，在 [11 章](./11_联调与故障案例.md) 的案例 9 里都能看到相应的抖动。
+
+---
+
+## 17. 面试问答 / 要点速记 / 自测题 / 链接
 
 ### 面试问答
 
@@ -437,5 +512,6 @@ DWA 在速度空间 $(v,\omega)$ 采样：只考虑"在接下来一个控制周�
 ### 相关链接
 
 - 上一章：[08 Hybrid-A* 全局规划](./08_HybridAStar全局规划.md)　下一章：[10 MPC 轨迹跟踪](./10_MPC轨迹跟踪.md)
+- 工程化（频率、延迟、调参过程）：[20 工程化实践](./20_工程化实践_频率周期与问题解决.md)
 - 返回：[README](./README.md)
 - 学习笔记：[../../05_学习笔记归档/P5/P5_本对话问答逐字稿.md](../../05_学习笔记归档/P5/P5_本对话问答逐字稿.md)
