@@ -23,6 +23,12 @@
 | 05 | [DDS与分布式通信](./05_DDS与分布式通信.md) | DDS、发现、QoS | 原有章节（重组） |
 | 06 | [MuJoCo_Pinocchio_KDL_工具链](./06_MuJoCo_Pinocchio_KDL_工具链.md) | 仿真与动力学库 | 原有章节（重组） |
 | 07 | [URDF_TF_坐标系实践](./07_URDF_TF_坐标系实践.md) | URDF、TF | 原有章节（重组） |
+| 09 | [ROS2测试与CI_launch_testing_gtest_rosbag回放](./09_ROS2测试与CI_launch_testing_gtest_rosbag回放.md) | 单元测试、launch_testing、rosbag2 回放回归、flaky 与 CI | 本轮新写 |
+| 10 | [仿真平台_Gazebo_Isaac_MuJoCo对比](./10_仿真平台_Gazebo_Isaac_MuJoCo对比.md) | 步长与刚度稳定性、Gazebo/Isaac/MuJoCo 取舍、域随机化 | 本轮新写 |
+| 11 | [CMake_ament_构建系统与依赖管理](./11_CMake_ament_构建系统与依赖管理.md) | 现代 CMake、package.xml 依赖、ament_cmake/python、colcon、交叉编译 | 本轮新写 |
+| 12 | [Docker与部署_交叉编译_systemd](./12_Docker与部署_交叉编译_systemd.md) | 镜像分层与多阶段、设备映射、DDS 网络、systemd 重启限流、升级回滚 | 本轮新写 |
+| 13 | [日志_诊断_性能剖析_perf_tracing](./13_日志_诊断_性能剖析_perf_tracing.md) | 日志节流、诊断四级、perf 火焰图、tracing、延迟预算 | 本轮新写 |
+| 14 | [ros2_control与硬件接口实战](./14_ros2_control与硬件接口实战.md) | 硬件接口、控制器管理器、read-update-write 循环、控制器链、实时性与 CAN 桥接 | 本轮新写 |
 
 ## 后续章节（计划，下一轮补写）
 
@@ -31,12 +37,6 @@
 | 预定文件 | 主题 | 篇幅 |
 |---|---|---|
 | `08_ROS2_Humble实战_launch_参数_生命周期_组件.md` | Python launch 文件，参数声明与动态重配置，生命周期节点，组件与进程内通信，QoS 调优 | 约 7000 汉字 |
-| `09_ROS2测试与CI_launch_testing_gtest_rosbag回放.md` | 单元测试与集成测试，launch_testing，rosbag2 回放基准，CI 流水线 | 约 5500 汉字 |
-| `10_仿真平台_Gazebo_Isaac_MuJoCo对比.md` | 物理引擎差异，传感器仿真，ROS2 接入，随机化与批量仿真 | 约 5500 汉字 |
-| `11_CMake_ament_构建系统与依赖管理.md` | CMake 基础，ament_cmake/ament_python，依赖与导出，交叉编译 | 约 5500 汉字 |
-| `12_Docker与部署_交叉编译_systemd.md` | 容器化机器人环境，镜像分层，设备映射，systemd 自启动，交叉编译到 ARM | 约 5500 汉字 |
-| `13_日志_诊断_性能剖析_perf_tracing.md` | 结构化日志，diagnostics，perf/火焰图，ros2_tracing 思想 | 约 5500 汉字 |
-| `14_ros2_control与硬件接口实战.md` | 硬件接口，控制器管理器，控制器链，实时性与 CAN 桥接 | 约 6000 汉字 |
 
 ## 与项目的关联
 
