@@ -190,6 +190,17 @@ $s=0.1,\ z=0$：
 
 哪个更好取决于离群值是否重要。如果那个 12.0 是少数异常像素，B 更好；如果它是关键的强响应（比如目标检测里最高分的位置），截断会损伤结果。这就是为什么**需要在代表性数据上评估最终指标**，而不是盲选。
 
+### 5.3b 为什么有些激活特别难量化
+
+- **激活范围分布重尾**：检测头附近的输出，大多数位置是"背景"（很小的值），少数目标位置有很大响应。min-max 会被少数大响应撑大范围，背景值被粗糙量化。对 sigmoid 之前的 logit，大负数区间（背景）精度不重要，所以影响通常较小，但对 box 回归值（需要精细）则要谨慎。
+- **SiLU/Swish**：$x\sigma(x)$ 在负半轴有一个小凹陷，最小值约 $-0.278$，正半轴近似线性。对称量化会浪费范围，非对称更合适；NPU 上 SiLU 还需要用查表近似，带来额外误差。这就是边缘部署中常见"把激活换成 ReLU/LeakyReLU 再训练"的原因之一。
+- **残差相加**：两路 scale 不同，需要重新对齐，会引入额外舍入。
+- **输出层与第一层**：输入层面对的是原始像素分布，输出层直接决定检测框精度，这两处常是掉点的"重灾区"，混合量化优先考虑它们。
+
+### 5.3c 误差如何逐层累积（定性）
+
+每一层都会引入量化噪声，后面的层把前面的噪声当作输入的一部分继续传递，并可能被放大或衰减。网络越深、越窄、权重分布越极端，累积越严重。轻量网络（参数少、通道少、每个通道承载的信息多）比大网络对量化更敏感，这也是 MobileNet 类网络 PTQ 掉点常比 ResNet 大的原因。因此**不要用某个大模型的量化经验推断自己的小模型**，要用自己的模型和数据评估。
+
 ### 5.4 校准集要求
 
 - **代表真实部署数据**：同样的相机、光照、背景、植物种类、距离。只用不相关图片，统计的范围与现场不符。
@@ -435,6 +446,16 @@ $\text{thr}=0.25$：$\mathrm{logit}(0.25)=\ln(0.25/0.75)=-1.0986$。该输出张
 4. **现场样本回放**：用真实相机采集的图，人工检查漏检与误检。
 5. 调整手段：更换/扩充校准集、换量化算法（min-max→KL）、关键层混合精度、必要时 QAT。
 
+**精度对比记录模板**（把你的实测填进去，没有的格子留空，不要估）：
+
+| 模型 | 精度类型 | 验证集 | mAP@0.5 | Precision | Recall | 备注 |
+|---|---|---|---|---|---|---|
+| ONNX（PC） | FP32 | 同一份 | — | — | — | 基准 |
+| RKNN（模拟器） | INT8 | 同一份 | — | — | — | 排除板端因素 |
+| RKNN（板端） | INT8 | 同一份 | — | — | — | 最终 |
+
+**掉点排查流程**：(1) FP32 ONNX 本身在验证集上是否正常（排除导出问题）；(2) RKNN 模拟器 FP16/不量化是否正常（排除转换问题）；(3) 开启量化后掉点多少；(4) 逐层余弦相似度，定位敏感层；(5) 换校准集/算法；(6) 敏感层混合精度；(7) 仍不行再考虑 QAT。每一步只改一个因素，才能知道哪个因素起作用。
+
 ### 12.2 性能：什么叫"快"
 
 - **推理延迟**：NPU 一次前向的时间。
@@ -510,7 +531,15 @@ $\text{thr}=0.25$：$\mathrm{logit}(0.25)=\ln(0.25/0.75)=-1.0986$。该输出张
 
 > Instead of dequantizing the whole output tensor, I quantize the confidence threshold into the integer domain and filter by integer comparison, because the quantization mapping is monotonic. Only the few surviving candidates are dequantized and decoded, which saves CPU time.
 
-**Q6. Is conversion the same as training?**
+**Q6. After INT8 conversion the detections look much worse. How do you debug?**
+
+> I change one factor at a time. First I confirm the FP32 ONNX model works on the validation set, then that the converted model without quantization works, which isolates export and preprocessing errors. Then I enable INT8 and measure the accuracy drop. If it drops, I compare layer-by-layer cosine similarity to find sensitive layers, try a better calibration set or algorithm, and keep those layers in higher precision if needed. Only if that fails would I consider quantization-aware training.
+
+**Q7. Why does the zero point matter, and why must real zero be exactly representable?**
+
+> Zero padding in convolutions and zeros produced by ReLU appear everywhere. If real zero mapped to a non-integer, every padded pixel or ReLU output would carry a systematic error that accumulates. The zero point guarantees that real zero maps exactly to an integer.
+
+**Q8. Is conversion the same as training?**
 
 > No. Training learns weights from labelled data using a loss. Conversion takes existing weights, changes the format and number representation for the device, and needs only a calibration set. 【我在项目中负责的是……请据实补充】
 
@@ -532,6 +561,12 @@ $\text{thr}=0.25$：$\mathrm{logit}(0.25)=\ln(0.25/0.75)=-1.0986$。该输出张
    **答案**：逐层 $s=4/127=0.0315$，$q=\mathrm{round}(9.525)=10$（$\hat w=0.315$）；逐通道 $s=1/127=0.00787$，$q=\mathrm{round}(38.1)=38$（$\hat w=0.2992$）。逐通道更准。
 7. 推理 20 ms，端到端 50 ms，能说"50 FPS"吗？
    **答案**：不能。50 FPS 只对应推理一项；端到端按 50 ms 为 20 次/s（流水线并行时吞吐可更高，但需明确定义）。
+8. 非对称量化，范围 $[-2,6]$，UINT8，求 $s,z$，以及 $x=0$ 与 $x=1$ 的量化值。
+   **答案**：$s=8/255=0.03137$；$z=\mathrm{round}(2/0.03137)=\mathrm{round}(63.75)=64$；$x=0\to q=64$；$x=1\to\mathrm{round}(31.875)+64=32+64=96$，反量化 $0.03137\times32=1.004$。
+9. 用整数阈值过滤：输出 $s=0.05,z=-10$（INT8），阈值 logit $=-2.0$，整数阈值是多少？
+   **答案**：$q_\tau=\mathrm{round}(-2.0/0.05)+(-10)=-40-10=-50$，保留 $q>-50$。
+10. 为什么"推理 20 ms"不能直接推出系统每秒处理 50 帧？
+   **答案**：还有采集、预处理、后处理和传输；端到端延迟是各段之和，吞吐只在流水线并行且各段不成为瓶颈时才接近 $1/\max$。
 
 ---
 
