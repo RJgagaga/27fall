@@ -10,7 +10,7 @@
 
 **前置知识**：[操作系统](./02_操作系统.md)（线程与进程）、[计算机网络](./03_计算机网络.md)（IO 多路复用）。工程补充：[Python工程与科学计算](../../02_基础知识/09_机器人软件/03_Python工程与科学计算.md)。
 
-> 说明：P4 用 LangGraph 构建决策链，该框架基于 Python（异步图执行）；P2 用 MuJoCo/Mink 求解约束 IK。你具体写过多少异步代码 `【待你补全：P4 服务端用同步还是 asyncio，是否有并发请求】`。
+> 说明：P4 用 LangGraph 构建决策链，该框架基于 Python（异步图执行）；P2 用 MuJoCo/Mink 求解约束 IK。我们的做法是：P4 服务端是混合模型——设备数据由阻塞式 TCP 接收线程读入并写进线程安全的 DataStore 快照，WebSocket 推送与 Web 交互跑在 asyncio 事件循环里，两者通过线程安全的方式交接（细节见 [P4 第 09 章](../../01_项目课程/P4_OpenHarmony智能园艺系统/09_服务端_DataStore_WebSocket_asyncio.md)）。并发请求主要是多个网页客户端同时连接，属于 IO 密集，适合 asyncio；决策链中的阻塞调用要放到线程里，避免卡住事件循环。
 
 ---
 
@@ -537,6 +537,70 @@ Python is great for prototyping, simulation, perception and high-level decision 
 Flask is simple and synchronous, FastAPI is built on ASGI with type hints and native async and WebSocket support, and Django is a full-stack framework. For an agent backend that streams updates, FastAPI is a typical choice, as long as I do not block the event loop.
 
 **追问方向**：WSGI vs ASGI。
+
+### Q39 `property` 与描述符（descriptor）是什么？（property and descriptors）
+**优先级：★★**
+
+**答案要点**
+- `property` 把方法伪装成属性：读 `obj.x` 时调用 getter，赋值 `obj.x = v` 时调用 setter，可在 setter 里做校验（例如关节角限幅），对外接口不变。
+- 本质是**描述符**：实现了 `__get__`、`__set__`、`__delete__` 之一的类，放在类属性位置时，属性访问会被它接管。函数本身也是描述符（`__get__` 把函数绑定成方法，所以 `self` 能自动传入）。
+- 区分**数据描述符**（定义了 `__set__`）与**非数据描述符**：属性查找顺序为 数据描述符 > 实例 `__dict__` > 非数据描述符/类属性。
+- 机器人场景：配置对象里用 `property` 做单位换算与范围检查；`dataclass` 字段、ORM 字段、`functools.cached_property` 都建立在描述符之上。
+
+```python
+# 教学示例: 带校验的 property
+class Joint:
+    def __init__(self): self._q = 0.0
+    @property
+    def q(self): return self._q
+    @q.setter
+    def q(self, v):
+        if not -3.14 <= v <= 3.14: raise ValueError("out of range")
+        self._q = v
+```
+
+**English short answer**
+A property lets me expose a method as an attribute, so I can validate or compute a value on access without changing the interface. Under the hood it is a descriptor, an object with get and set methods that Python calls when the attribute is accessed on a class. Functions are descriptors too, which is how self gets bound to methods.
+（中文：property 把方法当属性用，可在访问时做校验或计算而不改接口；它本质是描述符，函数也是描述符，所以方法能自动绑定 self。）
+
+**追问方向**：`__getattr__` 与 `__getattribute__`；`cached_property`；属性查找顺序。
+
+### Q40 `multiprocessing` 如何通信？`fork` 与 `spawn` 的区别？（Multiprocessing and IPC）
+**优先级：★★**
+
+**答案要点**
+- 多进程绕过 GIL，各进程有独立解释器与内存，适合 CPU 密集（图像预处理、批量规划）。代价：进程启动慢、数据需**序列化（pickle）**传输。
+- 通信方式：`Queue`/`Pipe`（pickle 后经管道，有拷贝开销）；`multiprocessing.shared_memory` 或 `Array/Value`（共享内存，零拷贝，需自己同步，配合 numpy `frombuffer` 使用）；`Manager`（代理对象，慢但方便）。
+- 启动方式：`fork`（Linux 默认，复制父进程，快，但在已有多线程、CUDA、持有锁时 fork 可能死锁或出错）；`spawn`（Windows/macOS 默认，新起解释器并重新 import 主模块，所以入口必须写 `if __name__ == "__main__":`）；`forkserver`。
+- 常用 `concurrent.futures.ProcessPoolExecutor`；传给子进程的函数和参数必须可 pickle（lambda、局部函数不行）。
+- 工程建议：大数组用共享内存传递，只传小消息；子进程异常要在父进程收集；退出时 `join` 并处理僵尸进程。
+
+**English short answer**
+Multiprocessing sidesteps the GIL by running separate interpreters, so it suits CPU-bound work. Processes talk through queues and pipes, which pickle the data, or through shared memory for large arrays without copying. Fork copies the parent process and is fast but unsafe with threads or GPU contexts, while spawn starts a fresh interpreter, which is why the entry point needs a main guard.
+（中文：多进程绕过 GIL，适合 CPU 密集；通过队列/管道（pickle 拷贝）或共享内存（大数组零拷贝）通信；fork 快但与线程/GPU 混用不安全，spawn 起新解释器，所以入口要有 main 保护。）
+
+**追问方向**：pickle 限制；共享内存同步；与线程池的取舍。
+
+### Q41 `str`、`bytes`、`bytearray` 与 `struct`：怎么处理二进制协议？（Bytes and struct）
+**优先级：★★**
+
+**答案要点**
+- `str` 是 Unicode 文本，`bytes` 是不可变字节序列，`bytearray` 是可变字节序列；二者通过 `encode()`/`decode()` 转换，需显式指定编码（常用 UTF-8），混用会 `TypeError`。
+- 解析串口/CAN/TCP 二进制帧用 `struct.pack/unpack`：格式串 `"<BBhf"` 中 `<` 小端、`>` 大端、`!` 网络序；`B` 1 字节无符号、`h` 2 字节有符号、`f` 4 字节浮点。字节序与对齐是常见错误源（带 `<`/`>` 前缀时不做对齐填充，默认 `@` 会按本机对齐填充）。
+- `memoryview` 可零拷贝切片大缓冲；numpy 的 `np.frombuffer` 可把字节流直接当数组。
+- 校验：CRC 用 `binascii.crc32` 或自写查表；TCP 是字节流，要自己处理粘包/半包（长度前缀或帧头+长度+CRC）。
+
+```python
+# 教学示例: 解析一帧 [类型 B][长度 B][float 数据]
+import struct
+kind, n, val = struct.unpack("<BBf", frame[:6])
+```
+
+**English short answer**
+Text is str and raw data is bytes, and I convert explicitly with an encoding such as UTF-8. For binary protocols I use struct with an explicit byte order prefix to pack and unpack fixed-layout frames, and memoryview or numpy frombuffer to avoid copies. Because TCP is a byte stream, I also need framing with a length and a checksum.
+（中文：文本用 str，原始数据用 bytes，显式指定编码转换；二进制协议用 struct 并显式写字节序前缀，用 memoryview/frombuffer 避免拷贝；TCP 是字节流，需要自己做长度加校验的分帧。）
+
+**追问方向**：大小端；粘包处理；`ctypes.Structure`。
 
 ---
 

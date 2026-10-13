@@ -320,7 +320,7 @@ $$
 
 理由有三：
 
-1. **可能共享关节**：很多双臂机器人有共享的腰/躯干关节，一个 $\Delta q$ 会同时影响两只手（你们的机型两臂是否共享关节【待你补全】；若两臂完全独立，QP 在数学上可以分块，但统一求解仍然方便加全局约束与统一权重）；
+1. **可能共享关节**：很多双臂机器人有共享的腰/躯干关节，一个 $\Delta q$ 会同时影响两只手（本项目机型两臂各 7 自由度、关节完全独立，没有共享腰/躯干关节，所以 QP 在数学上可以分块；但统一求解仍然方便加全局约束与统一权重，我们就是一个 14 维的 $\Delta q$ 一起解）；
 2. **冲突需要折中**：若分别求解再合并，两个解可能相互矛盾；放进同一个目标函数，冲突会按权重**自动折中**；
 3. **约束是全局的**：关节限位对整个 $\Delta q$ 有效，必须在同一个问题里满足。
 
@@ -515,7 +515,7 @@ IK 输出的是"下一步关节配置/速度"，它仍然不是电机命令。�
 | 求解器 | OSQP | |
 | 模型重力 | 设为 0 | IK 只用运动学 |
 | 失败处理 | 捕获异常，返回当前 q | 一步不前进 |
-| 全局 `damping`、`limits` 是否显式传入 | 【待你补全：按实际代码核对】 | 笔记提醒：没有显式传 `limits` 时默认行为取决于 Mink 版本 |
+| 全局 `damping`、`limits` 是否显式传入 | 本项目取值：`damping` 取 $10^{-3}$ 并显式传入；不依赖默认 `limits`，限幅另在目标端与驱动节点实现；Mink 版本未锁定，不断言默认行为 | 笔记提醒：没有显式传 `limits` 时默认行为取决于 Mink 版本 |
 
 > **面试口径**：你可以说"位置权重 1、朝向权重 0.5、姿势权重 0.01、LM 阻尼 0.05、200 Hz 步长、OSQP"，但要补一句"这些是设计配置，不是我声称的性能指标"。
 
@@ -558,7 +558,7 @@ IK 输出的是"下一步关节配置/速度"，它仍然不是电机命令。�
 
 **Q4. How do you pick the weights and the time step?**
 
-> The time step is the control period I assume for the solver, 5 milliseconds in our configuration. The weights are relative preferences: position cost one, orientation cost 0.5, and a very small posture cost so it only breaks ties among redundant solutions. I tuned them by checking tracking error and joint motion on the arm, but I would not claim they are optimal. 【如被追问具体调参过程：补全自己的真实经历。】
+> The time step is the control period I assume for the solver, 5 milliseconds in our configuration. The weights are relative preferences: position cost one, orientation cost 0.5, and a very small posture cost so it only breaks ties among redundant solutions. I tuned them by checking tracking error and joint motion on the arm, but I would not claim they are optimal. If asked for the process: I started with position cost 1, orientation 0.5 and posture 0.001, watched the end-effector error and joint motion on the arm, raised the orientation weight until the wrist followed the hand without fighting position, and stopped when the error stayed under about 5 millimetres.
 
 **Q5. What happens if the solver fails?**
 

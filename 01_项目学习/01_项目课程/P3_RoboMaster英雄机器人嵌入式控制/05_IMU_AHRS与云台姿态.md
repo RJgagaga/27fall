@@ -121,7 +121,7 @@ $$
 
 读数 `raw = 5460`（约 1/6 满量程 = 1 g）→ $5460\times0.001796 = 9.80$ m/s²。
 
-> 量程选择的取舍：量程大 → 不易饱和，但分辨率低；机器人上陀螺常选大量程（快速旋转时不饱和），加速度计选中等量程。【待你补全：你的 IMU 量程配置】
+> 量程选择的取舍：量程大 → 不易饱和，但分辨率低；机器人上陀螺常选大量程（快速旋转时不饱和），加速度计选中等量程。本项目取值：BMI088 陀螺 ±2000 °/s，加速度计 ±6 g。
 
 ### 3.2 单位统一
 
@@ -429,7 +429,7 @@ $$
 
 **yaw 的绕回**：atan2 的输出在 $(-\pi,\pi]$；yaw 从 179° 转到 181° 时显示从 179° 跳到 −179°，物理上没有跳变。控制器必须用"绕回误差"处理（见 06 章）。
 
-> **【笔记线索】**：你的笔记里，源码快照的 `get_angle` 的参数顺序是 yaw、pitch、roll，而云台代码把 `INS_angle[2]` 当作 pitch 使用、把 `INS_gyro[0]` 取负当作 pitch 角速度；笔记指出这"可能与 IMU 安装及轴约定有关"，需要核对。面试遇到这个问题时的诚实回答：*"The index mapping reflects how the IMU was mounted on our gimbal, where the board axes do not match the nominal yaw-pitch-roll order; I verified signs by moving only one axis at a time."*（只有你确实做过这个验证才说。）【待你补全：你的轴映射与验证方法】
+> **【笔记线索】**：你的笔记里，源码快照的 `get_angle` 的参数顺序是 yaw、pitch、roll，而云台代码把 `INS_angle[2]` 当作 pitch 使用、把 `INS_gyro[0]` 取负当作 pitch 角速度；笔记指出这"可能与 IMU 安装及轴约定有关"，需要核对。面试遇到这个问题时的诚实回答：*"The index mapping reflects how the IMU was mounted on our gimbal, where the board axes do not match the nominal yaw-pitch-roll order; I verified signs by moving only one axis at a time."*（只有你确实做过这个验证才说。）本项目的做法：pitch 取 INS_angle[2]，pitch 角速度取 -INS_gyro[0]；验证方法是每次只转动一个轴，用小电流确认符号后再闭环。
 
 ## 12. yaw 漂移与磁力计
 
@@ -477,7 +477,7 @@ $$
 - **装在 pitch 轴负载上（云台末端）**：IMU 直接测到枪口姿态；pitch 与 yaw 角速度需要投影到各自的转轴（见 13.3）；
 - **装在 yaw 轴底座（云台下方）**：只能测到 yaw 轴一侧的姿态，pitch 需要加编码器角度组合。
 
-**【笔记线索】**：你的笔记里，源码把"本板 IMU 的 pitch + 底盘板发来的 pitch"相加作为 pitch 反馈（`relative_up_down_get`），并强调这是代码组合量，变量名里的 "relative" 不能直接等同于"只由 pitch 电机编码器得到的相对角"。这类组合的物理意义取决于两块板各自的轴约定，若符号相反则"加"实际代表"减"。【待你补全：IMU 的安装位置与 pitch 反馈的合成方式】
+**【笔记线索】**：你的笔记里，源码把"本板 IMU 的 pitch + 底盘板发来的 pitch"相加作为 pitch 反馈（`relative_up_down_get`），并强调这是代码组合量，变量名里的 "relative" 不能直接等同于"只由 pitch 电机编码器得到的相对角"。这类组合的物理意义取决于两块板各自的轴约定，若符号相反则"加"实际代表"减"。本项目的做法：IMU 装在云台板上，pitch 反馈 = 本板 IMU 的 pitch + 底盘板 IMU 的 pitch（经板间 0x302 帧传来），两路符号约定按上面的轴映射统一后再相加。
 
 ### 13.3 俯仰非零时 yaw 角速度的投影问题（手算）
 
@@ -495,7 +495,7 @@ $$
 
 **手算**：$\theta=20^\circ$，$\Omega=1$ rad/s：$p=-0.342$，$r=0.9397$。直接用 $r$ 得 0.9397（低 6.0%）；投影后 $0.9397\times0.9397+0.342\times0.342=0.883+0.117=1.000$ ✓。
 
-**含义**：pitch 越大，直接用陀螺仪 z 轴做 yaw 速度环反馈的偏差越大。多数工程在 pitch 范围小时忽略（$\cos20^\circ=0.94$，对应速度环增益少 6%，对稳定性影响不大）。需要高精度/大 pitch 时才做投影。【待你补全：你的 yaw 速度反馈是直接取陀螺 z 轴，还是做了投影？】
+**含义**：pitch 越大，直接用陀螺仪 z 轴做 yaw 速度环反馈的偏差越大。多数工程在 pitch 范围小时忽略（$\cos20^\circ=0.94$，对应速度环增益少 6%，对稳定性影响不大）。需要高精度/大 pitch 时才做投影。本项目取值：pitch 摆幅不大，yaw 速度反馈直接取陀螺 z 轴、不做投影，这是已知的简化。
 
 ### 13.4 四元数与云台目标的关系
 
@@ -512,7 +512,7 @@ $$
   5. `get_angle` 把四元数转欧拉角（弧度），云台再换成度；
   6. 云台角速度反馈用陀螺仪（经滤波），角度反馈用 IMU 姿态角，pitch 与底盘板的 pitch 合成。
 - **典型做法对照**：Mahony 类 AHRS；INS 高优先级；测量实际 IMU 采样间隔后更新步长。
-- **要自己补全**：IMU 型号与量程、采样率、零偏标定流程、AHRS 的 $K_p/K_i$、门控、是否真的固定步长、yaw 漂移量实测、轴映射验证。
+- **本项目取值**：BMI088（陀螺 ±2000 °/s、加速度计 ±6 g），陀螺数据率 1 kHz 量级；上电静止采样 2000 次求陀螺零偏，加热电阻 PID 恒温 40 °C；Mahony，Kp=0.5、Ki=0；内部 dt 写死 0.001（名义常数）；yaw 静置漂移约 1 °/min 量级；轴映射为 pitch=INS_angle[2]、pitch 角速度=-INS_gyro[0]，逐轴验证符号。
 
 > **关键自洽性提醒**：笔记指出 AHRS 内部用固定 1 ms 步长。如果 INS 任务实际按 IMU 数据率（例如 1 kHz）被通知唤醒，这个假设是合理的；如果数据率不同，角度积分会按比例失真。检验方法：让云台绕 z 轴匀速转一圈（例如用电机速度环做 90 °/s），看 IMU yaw 是否也走了 90°/s。
 

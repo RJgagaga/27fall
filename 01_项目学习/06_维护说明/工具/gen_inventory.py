@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""生成文件清单（标题、汉字数、英文词数、占位数）。用法：python3 -I 01_项目学习/06_维护说明/工具/gen_inventory.py > 清单.md"""
+#!/usr/bin/env python
+"""生成文件清单（标题、汉字数、英文词数、占位数）。用法：python -I 01_项目学习/06_维护说明/工具/gen_inventory.py > 清单.md"""
 import os, re
 ROOT = os.path.join(os.getcwd(), '01_项目学习') if os.path.isdir('01_项目学习') else os.getcwd()
 rows = []

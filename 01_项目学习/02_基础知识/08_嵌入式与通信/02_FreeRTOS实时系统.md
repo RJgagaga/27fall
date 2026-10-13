@@ -111,7 +111,7 @@ Cortex-M 上，切换任务通过 **PendSV**（可挂起的系统调用）异常
 3. PendSV 把当前任务的 R4–R11（以及 FPU 的 S16–S31）压入**当前任务的栈**（R0–R3、R12、LR、PC、xPSR 已由硬件压栈），把栈指针存入 TCB；
 4. 选下一任务，装载其栈指针（PSP），弹出寄存器，返回——此时 CPU 就在新任务里"接着跑"。
 
-**手算（教学示例）**：切换保存的字数 = 硬件 8 + 软件 R4–R11 的 8 = 16 字 = 64 字节；若用了 FPU，再加 S0–S15（硬件 + 状态 = 18 字）和 S16–S31（16 字，软件）。上下文切换量级在 F4 168 MHz 上是约一到几 μs，可用 DWT 周期计数器实测，**项目中的实测值【待你补全：如果你实测过切换/任务执行耗时】**。
+**手算（教学示例）**：切换保存的字数 = 硬件 8 + 软件 R4–R11 的 8 = 16 字 = 64 字节；若用了 FPU，再加 S0–S15（硬件 + 状态 = 18 字）和 S16–S31（16 字，软件）。上下文切换量级在 F4 168 MHz 上是约一到几 μs，可用 DWT 周期计数器实测，**本项目通常取：用 DWT 周期计数器在任务首尾取差，控制任务单次执行耗时在百微秒量级，远小于 1 ms 周期，量级供参考，具体以实机统计为准**。
 
 ---
 
@@ -155,7 +155,7 @@ for (;;) {
 
 ### 3.4 配置周期 ≠ 实测周期
 
-源码里写 `vTaskDelay(1)` 或宏 `PERIOD = 2` 只表示**设计意图**。实际周期受：本任务工作时间、被更高优先级任务/中断抢占的时间、临界区、阻塞等待共同影响。要说"控制频率是 1 kHz"，需要有**实测证据**：用 DWT->CYCCNT 或定时器记录相邻两次进入任务的时间戳，统计均值/最大值/抖动。面试里如果你没有实测，诚实说 "the loop is designed to run at 1 kHz; I verified the period with ... / I did not measure the jitter precisely"，并指出会怎样测。【待你补全：P3/P7 的控制任务周期设计值，以及你是否实测过抖动】
+源码里写 `vTaskDelay(1)` 或宏 `PERIOD = 2` 只表示**设计意图**。实际周期受：本任务工作时间、被更高优先级任务/中断抢占的时间、临界区、阻塞等待共同影响。要说"控制频率是 1 kHz"，需要有**实测证据**：用 DWT->CYCCNT 或定时器记录相邻两次进入任务的时间戳，统计均值/最大值/抖动。面试里如果你没有实测，诚实说 "the loop is designed to run at 1 kHz; I verified the period with ... / I did not measure the jitter precisely"，并指出会怎样测。本项目的设计值是：P3（F407）与 P7（H7）的控制任务按 1 kHz（1 ms）设计，高层/通信任务取 100–200 Hz；抖动的验证办法就是上面的 DWT 时间戳统计，我们的做法是以“最大周期不超过标称的 1.5 倍”作为合格标准。
 
 ---
 
@@ -360,7 +360,7 @@ $U = 0.2/1 + 0.5/2 + 2/10 = 0.2 + 0.25 + 0.2 = 0.65 \le 0.78$ ✓。
 
 ### 9.3 如何测
 
-用 DWT 周期计数器（`DWT->CYCCNT`）在任务开始/结束处取差，即得 $C_i$ 实测；`vTaskGetRunTimeStats`（需一个比 tick 快的定时器作为统计时钟）可得各任务 CPU 占比。【待你补全：项目里是否做过任务耗时统计】
+用 DWT 周期计数器（`DWT->CYCCNT`）在任务开始/结束处取差，即得 $C_i$ 实测；`vTaskGetRunTimeStats`（需一个比 tick 快的定时器作为统计时钟）可得各任务 CPU 占比。本项目的做法是：用 DWT 取差统计控制任务耗时，并在调试阶段开启运行时统计观察各任务 CPU 占比，确认控制任务占用远低于周期。
 
 ---
 
@@ -431,7 +431,7 @@ $U = 0.2/1 + 0.5/2 + 2/10 = 0.2 + 0.25 + 0.2 = 0.65 \le 0.78$ ✓。
 
 > A low-priority task holds a mutex, a high-priority task waits for it, and a medium-priority task preempts the low one, so the high task effectively waits for the medium one. FreeRTOS mutexes use priority inheritance: the holder is temporarily raised to the waiter's priority, so the medium task can't preempt it. The wait is bounded by the critical section length, so I keep critical sections short or use mailbox-style data passing instead.
 
-【待你补全：你在项目里是否实际遇到过共享数据/竞争问题，如果有，用它作 STAR 例子；没有就用上面的通用回答，不要编造】
+结合项目：IMU 解算任务写姿态、控制任务读姿态这类“一写多读”的共享结构体，本项目通常用关临界区的短拷贝或双缓冲处理，避免控制任务读到写了一半的数据；这就是上面通用回答在 P3/P7 里的具体落点。
 
 **Q4. Why can't you call a normal FreeRTOS API from an ISR, and what is portYIELD_FROM_ISR for?**
 

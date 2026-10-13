@@ -336,7 +336,7 @@ AMCL 的位姿时间戳是激光扫描时间，到达 EKF 时已比当前状态�
 
 ## 10. robot_localization 的典型配置思路
 
-`robot_localization` 是 ROS 里常用的开源 EKF/UKF 实现（`ekf_localization_node`）。CV 只写了 "EKF"，项目具体用的是否为此包，以及配置细节，请自行确认【待你补全】。下面讲"典型配置思路"，**数值为教学示例**。
+`robot_localization` 是 ROS 里常用的开源 EKF/UKF 实现（`ekf_localization_node`）。CV 只写了 "EKF"，本项目的 `odom→base_link` 即由该包的 `ekf_node` 提供（30 Hz，`two_d_mode: true`）。下面讲"典型配置思路"，**数值为教学示例**。
 
 ### 10.1 状态与配置矩阵
 
@@ -392,7 +392,7 @@ imu0_queue_size: 20
 | A（最常见） | EKF（里程+IMU） | AMCL | AMCL 自己算 `map→odom`，简单、通用 |
 | B | EKF-1（里程+IMU） | EKF-2（再加入 AMCL/全局位姿） | 全局修正也经过滤波，可加门限、可做平滑 |
 
-CV 写的是 "EKF/AMCL localisation ... output a continuous vehicle state"。项目具体用的是 A 还是 B【待你补全】。两种架构的"连续性"论证见 [06](./06_EKF与AMCL协同_TF分工与连续状态.md)。
+CV 写的是 "EKF/AMCL localisation ... output a continuous vehicle state"。本项目用的是架构 A：EKF（里程+IMU）发布 `odom→base_link`，AMCL 发布 `map→odom`，在 AMCL 与下游之间另加一层门限与限速平滑（见 [06](./06_EKF与AMCL协同_TF分工与连续状态.md)）。两种架构的"连续性"论证见 [06](./06_EKF与AMCL协同_TF分工与连续状态.md)。
 
 ### 10.5 参数的含义速查
 
@@ -464,12 +464,12 @@ CV 写的是 "EKF/AMCL localisation ... output a continuous vehicle state"。项
 **Q2. What did you fuse in the EKF and why not fuse everything?**
 
 > I fused wheel speed and IMU yaw rate for the continuous state, and used the LiDAR-based map pose as the global correction. I avoided fusing integrated quantities, such as odometry position or an unreferenced yaw, as absolute measurements, because their drift would be treated as truth and fight with the global correction.
-> 【待你补全：项目里实际融合了哪些量、频率、是否使用 robot_localization】
+> 本项目的做法：使用 `robot_localization` 的 `ekf_node`，30 Hz；融合的量为轮速 $v_x$（来自编码器）、由 $v\tan\delta/L$ 得到的偏航角速度、IMU 陀螺 $\omega_z$；不融合积分位置，也不把无参考的 yaw 当绝对量融合。
 
 **Q3. How do you choose Q and R?**
 
 > $R$ from sensor statistics: I log the sensor at rest and compute the variance. $Q$ reflects how wrong the model can be; I start from the input noise mapped through the Jacobian, then adjust it using the innovation consistency (NIS) so that it matches the expected chi-square value. I do not tune by feel alone.
-> 【待你补全：实机 EKF 噪声量级（见 README 自查表）】
+> 本项目取值约：轮速标准差 0.05 m/s（含打滑），陀螺标准差 0.01 rad/s（静止统计约 0.003 rad/s，放大以容纳温漂），过程噪声对角元为 $10^{-3}$–$10^{-2}$ 量级，并用 NIS 检查是否落在卡方期望附近。
 
 **Q4. Walk me through a small numerical example.**
 

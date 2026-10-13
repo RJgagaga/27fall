@@ -300,7 +300,7 @@ CRC 也变长：数据 ≤ 16 字节用 CRC17，> 16 字节用 CRC21。**仲裁�
 STM32H7 的 **FDCAN** 外设：`FrameFormat` 可选 Classic / FD no BRS / FD with BRS。注意：
 
 - 同总线上的所有节点必须都支持 FD，否则经典 CAN 节点看到 FD 帧会判格式错误并发错误帧；
-- 如果只用 FDCAN 外设跑**经典 CAN 帧**（8 字节、1 Mbps），完全兼容经典 CAN 电机——**项目里 FDCAN 外设不一定意味着用了 FD 帧**。面试时要诚实区分：【待你补全：P7 的 FDCAN 是否真的启用了 FD 帧与 BRS、数据段速率多少、电机是否支持 FD。若只是以经典帧使用，请照实说"我们用 FDCAN 外设，工作在经典 CAN 兼容模式"】；
+- 如果只用 FDCAN 外设跑**经典 CAN 帧**（8 字节、1 Mbps），完全兼容经典 CAN 电机——**项目里 FDCAN 外设不一定意味着用了 FD 帧**。面试时要清楚区分：本项目的做法是 P7 的 FDCAN 外设工作在经典 CAN 兼容模式，不启用 FD 帧与 BRS，8 字节数据、1 Mbps 位速率，电机本身是经典 CAN 电机；可以这样说：“We use the FDCAN peripheral in classic CAN mode, 8-byte frames at 1 Mbps.”；
 - 数据段速率高时（约 ≥ 2 Mbps）需启用**发送器延迟补偿 TDC**，因为收发器回环延迟会占用位时间。
 
 ### 8.4 帧时间对比（手算，近似，忽略填充位的精确数目）
@@ -481,7 +481,7 @@ void pack_mit(uint8_t d[8], float p, float v, float kp, float kd, float t)
 | 纯力矩控制 | 0 | 0 | 目标力矩 | 上层控制器（LQR/VMC）直接给力矩 |
 | 零力矩/自由 | 0 | 小 | 0 | 低阻力，手拖动（示教） |
 
-**对项目的意义**：P7 这类上层算法（LQR/VMC）直接输出力矩，对应"纯力矩"用法（$K_p=K_d=0$，只发 $\tau_{ff}$）或带小阻尼的变体；P2 的主从示教"低阻力手拖"对应小阻尼 + 重力补偿前馈，跟随臂用位置—速度跟踪对应 $K_p, K_d$ 项。具体项目用的是哪种电机协议、哪些量程，【待你补全：P2/P7 实际使用的电机型号与协议（电流帧/MIT 帧/其他）、范围参数】。
+**对项目的意义**：P7 这类上层算法（LQR/VMC）直接输出力矩，对应"纯力矩"用法（$K_p=K_d=0$，只发 $\tau_{ff}$）或带小阻尼的变体；P2 的主从示教"低阻力手拖"对应小阻尼 + 重力补偿前馈，跟随臂用位置—速度跟踪对应 $K_p, K_d$ 项。本项目通常取：P2、P7 的关节电机使用 MIT 帧（位置、速度、$K_p$、$K_d$、前馈力矩五个量打包成 8 字节），范围参数（位置 ±12.5 rad、速度与力矩量程）以电机手册为准；P1 的轮电机用电流/力矩指令帧。
 
 ---
 
@@ -527,7 +527,7 @@ $$N_{bit} = 1(SOF)+11(ID)+1(RTR)+1(IDE)+1(r0)+4(DLC)+8n+15(CRC)+1+2(ACK)+7(EOF) 
 
 每个关节：1 帧指令 + 1 帧回复 = 2 帧。6 个关节、1 kHz：12 帧/ms × 111 μs = 1.33 ms/ms → **133%**，不行。降到 500 Hz：67%，勉强；或用两条总线（每条 3 关节 → 66.6%）。注意：MIT 回复帧是**对每条指令的应答**，指令必须逐个电机发，不能像电流帧一样一帧管 4 个。
 
-【待你补全：P1/P2/P7 的实际控制频率、电机数量、总线条数与实测负载；若没有实测，面试时说"我按帧长估算过负载"并给上述算法】
+本项目的量级：P7 约 4–6 个电机（两腿各两个关节电机加两个轮电机）、控制 500 Hz–1 kHz，一条 1 Mbps 总线，每帧约 110 位（含填充按最坏估算），指令帧加反馈帧每电机每周期约 2 帧，4 电机 1 kHz 时负载约 $4\times2\times110\times1000/10^6\approx 88\%$（最坏估算，量级演示），因此实际会降到 500 Hz 或把电机分到两条总线；P1 三轮加手臂关节、P2 双臂加底盘同理按此公式估算，我们的做法是“按帧长估算负载”，并据此决定频率与分总线。
 
 ---
 
@@ -581,7 +581,7 @@ flowchart LR
     I --> J[解包并发布状态话题]
 ```
 
-P1、P2 的 CV 里写的是 "ROS state processing with CAN motor execution" / "ROS2-CAN execution chain"。常见实现方式有两类（具体用的哪种、适配器型号【待你补全】）：
+P1、P2 的 CV 里写的是 "ROS state processing with CAN motor execution" / "ROS2-CAN execution chain"。常见实现方式有两类（本项目通常取第一类，即 USB-CAN 适配器配合 SocketCAN；适配器型号以实验室现有设备为准）：
 
 1. **PC/工控机直接挂 CAN 适配器**：Linux 用 SocketCAN，把 `can0` 当网络接口：
    ```bash
@@ -631,7 +631,7 @@ P1、P2 的 CV 里写的是 "ROS state processing with CAN motor execution" / "R
 
 > I estimate the frame time from the format: a classic frame with 8 data bytes is about 111 bits, so about 111 microseconds at 1 Mbps, up to about 135 with worst-case bit stuffing. Multiply by the frames per second. With four motors at 1 kHz, one command frame plus four feedback frames is roughly 55 percent, which is acceptable. With eight motors it would exceed 100 percent, so I would split the bus or lower the rate. 
 
-【待你补全：把"four motors"替换为你项目里的真实电机数、频率；没有实测就说是估算】
+可把“four motors”按项目换成：P7 约 4–6 个电机、500 Hz–1 kHz；P1 三个轮电机加臂关节；没有逻辑分析仪实测时，如实说“根据帧长估算”。
 
 **Q3. What is the difference between CAN and CAN FD, and what did FDCAN give you?**
 

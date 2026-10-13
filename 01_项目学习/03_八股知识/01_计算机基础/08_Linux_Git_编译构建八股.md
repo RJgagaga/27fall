@@ -495,7 +495,7 @@ I build with colcon, using symlink install so Python edits take effect, then sou
 ### Q34 板端（RK3588 / 嵌入式 Linux）常见部署流程？（Deploying to an embedded Linux board）
 **优先级：★★**
 
-**答案要点**：典型做法：①交叉编译或在板子上编译；②`scp/rsync` 部署；③systemd 服务开机自启；④日志用 journald 并限制大小；⑤设备权限用 udev 规则；⑥版本管理：打 tag，记录依赖库版本；⑦远程调试 ssh + gdbserver；⑧只读根文件系统与 OTA 升级（进阶）。与 P4 的 RK3588 边缘推理部署相关：模型转换（RKNN）在 PC 上完成，板端只跑推理运行时（见 CV 的"YOLOv5/RKNN INT8 inference chain on RK3588"）。具体部署方式 `【待你补全：P4 里你是在板上编译还是交叉编译，怎么开机自启与更新】`。
+**答案要点**：典型做法：①交叉编译或在板子上编译；②`scp/rsync` 部署；③systemd 服务开机自启；④日志用 journald 并限制大小；⑤设备权限用 udev 规则；⑥版本管理：打 tag，记录依赖库版本；⑦远程调试 ssh + gdbserver；⑧只读根文件系统与 OTA 升级（进阶）。与 P4 的 RK3588 边缘推理部署相关：模型转换（RKNN）在 PC 上完成，板端只跑推理运行时（见 CV 的"YOLOv5/RKNN INT8 inference chain on RK3588"）。我们的做法是：RKNN 模型转换在 PC 上完成；板端运行的 Python 推理脚本与 RKNN 运行时直接在 RK3588 上执行，不需要交叉编译；用 `rsync` 同步脚本与模型；用 systemd 服务实现开机自启与异常重启（`Restart=on-failure`），更新时先同步文件再 `systemctl restart`；Hi3861 端则在 PC 上用 OpenHarmony 构建工具链交叉编译后烧录。
 
 **English short answer**
 I either cross-compile on a PC or build on the board, copy the binaries with rsync, run them as a systemd service that starts at boot, and manage device permissions with udev rules. For the RK3588 vision pipeline the model conversion is done on the PC and only the inference runtime runs on the board.
@@ -511,6 +511,93 @@ I either cross-compile on a PC or build on the board, copy the binaries with rsy
 I pin the toolchain and dependency versions, use containers for reproducible builds, and verify the architecture and library versions on the target. I keep parameters in config files rather than hard-coded paths, and test logic in simulation before touching hardware.
 
 **追问方向**：glibc 版本；ABI。
+
+### Q36 systemd 服务怎么写？怎么看日志？（systemd and journalctl）
+**优先级：★★**
+
+**答案要点**
+- systemd 是现代 Linux 的初始化系统与服务管理器。服务单元文件放 `/etc/systemd/system/xxx.service`，核心三段：`[Unit]`（描述、`After=network-online.target` 依赖顺序）、`[Service]`（`ExecStart`、`User`、`Restart=on-failure`、`RestartSec`、`Environment`）、`[Install]`（`WantedBy=multi-user.target`）。
+- 常用命令：`systemctl daemon-reload`（改了单元文件后）、`enable --now`、`status`、`restart`、`stop`；日志：`journalctl -u robot.service -f`（跟随）、`-b`（本次启动）、`--since "10 min ago"`、`-p err`。
+- 机器人上的注意点：①服务里没有交互终端环境，`source setup.bash` 的环境变量要在 `Environment=` 或包装脚本里设置；②设备（串口、CAN）未就绪时用 `After=`/`Restart` 兜底；③限制日志体积 `SystemMaxUse=`（`journald.conf`）；④`WatchdogSec=` 可与程序的心跳配合，卡死自动重启。
+
+**English short answer**
+I write a systemd unit with an ExecStart command, a restart policy and a WantedBy target, then enable it so it starts at boot and restarts on failure. I read its logs with journalctl following the unit. On a robot I pay attention to the environment variables, the start order relative to devices and network, and a size limit on the journal.
+（中文：写一个带 ExecStart、重启策略和 WantedBy 的 systemd 单元并 enable，实现开机自启和失败重启；用 journalctl 跟随查看日志；机器人上要注意环境变量、相对设备和网络的启动顺序、以及日志体积上限。）
+
+**追问方向**：`Type=simple/forking/notify`；用户级服务；看门狗集成。
+
+### Q37 SocketCAN 是什么？怎么在 Linux 上调试 CAN 总线？（SocketCAN）
+**优先级：★★**
+
+**答案要点**
+- SocketCAN 把 CAN 控制器抽象成网络接口（`can0`），用 socket API（`socket(PF_CAN, SOCK_RAW, CAN_RAW)`）收发帧，可被多个进程同时读取。ROS/ROS2 的 CAN 电机驱动（与 CV 中 P1/P2 的 "ROS state processing with CAN motor execution" 同类架构）常通过它与 MCU 或电机通信。
+- 配置（需 root）：`ip link set can0 type can bitrate 1000000`，`ip link set up can0`；CAN FD 另设 `dbitrate` 并 `fd on`。
+- 调试工具（`can-utils`）：`candump can0`（抓帧）、`cansend can0 123#DEADBEEF`（发帧）、`cangen`（压力测试）、`canbusload`（总线负载）；`ip -details -statistics link show can0` 查看错误计数与 bus-off 状态。
+- 常见问题：波特率不一致 → 大量错误帧；终端电阻缺失（两端各 120 Ω）；总线 bus-off 需重启接口（`restart-ms`）；发送队列满（`txqueuelen` 过小）。典型波特率 500 kbit/s～1 Mbit/s（典型取值，以实机为准）。
+
+**English short answer**
+SocketCAN exposes a CAN controller as a network interface, so I can use sockets and standard tools. I set the bit rate with ip link, watch traffic with candump, send test frames with cansend, and check error counters and bus load. Typical problems are mismatched bit rates, missing termination resistors, and a bus-off state.
+（中文：SocketCAN 把 CAN 控制器当网络接口，可用 socket 和标准工具；用 ip link 设置波特率，candump 抓帧，cansend 发测试帧，并检查错误计数与总线负载；常见问题是波特率不匹配、缺终端电阻、bus-off。）
+
+**追问方向**：CAN 仲裁与 ID 优先级；错误帧；CAN FD。
+
+### Q38 core dump 与 `ulimit`：怎么事后分析崩溃？（Core dumps and ulimit）
+**优先级：★★**
+
+**答案要点**
+- 程序崩溃（段错误、`abort`）时可由内核生成 core 文件，记录当时的内存与寄存器。步骤：①编译带 `-g`（最好 `-O0` 或 `-Og`）；②`ulimit -c unlimited` 允许生成；③`cat /proc/sys/kernel/core_pattern` 查看去向（现代发行版可能交给 `systemd-coredump`，用 `coredumpctl list/gdb` 查看）；④`gdb ./prog core`，`bt` 看调用栈，`info threads`、`thread apply all bt` 看所有线程。
+- `ulimit` 管理进程资源限制：`-n` 打开文件数、`-s` 栈大小、`-c` core 大小、`-l` 锁定内存（实时程序 `mlockall` 需要）、`-r` 实时优先级；永久修改写 `/etc/security/limits.conf` 或 systemd 的 `LimitCORE=` 等。
+- 没有调试符号时：保留带符号版本，用 `addr2line` 把地址转为行号；AddressSanitizer（`-fsanitize=address`）能在崩溃前给出更准确的越界/释放后使用信息。
+
+**English short answer**
+To analyse a crash after the fact I build with debug symbols, allow core files with ulimit, and open the core in gdb to print the backtrace of all threads. On systemd machines I use coredumpctl. If the binary has no symbols, I use addr2line on a symbolized build, and AddressSanitizer gives more precise reports for memory errors.
+（中文：事后分析崩溃：带调试符号编译，用 ulimit 允许生成 core，在 gdb 中查看所有线程的回溯；systemd 机器用 coredumpctl；无符号时用 addr2line；AddressSanitizer 对内存错误给出更精确的报告。）
+
+**追问方向**：`core_pattern`；Release 与 Debug 符号分离；Valgrind。
+
+### Q39 `free -h` 怎么看？buffers/cache、swap 与 OOM killer？（Memory in Linux）
+**优先级：★★**
+
+**答案要点**
+- `free -h` 中重点看 **available**（可供新进程使用的内存，含可回收的页缓存），而不是 `free`；Linux 会把空闲内存用作页缓存（`buff/cache`），所以 `free` 小是正常的。
+- `swap`：把冷页换到磁盘；机器人嵌入式板常关闭或很小，因为换页会造成不可预测的延迟；`vmstat 1` 里 `si/so` 持续非零说明在换页。
+- OOM killer：内存耗尽时内核按 `oom_score` 杀进程；`dmesg | grep -i "killed process"` 确认；可通过 `oom_score_adj` 保护关键进程，或用 cgroup/容器内存限制把风险隔离在容器内。
+- 排查泄漏：`top`/`ps` 看 `RSS` 是否单调上涨；`pmap`、`smem`；用户态用 Valgrind massif、heaptrack 或 ASan 的 LeakSanitizer；Python 用 `tracemalloc`。
+- 嵌入式板（如 RK3588）上，GPU/NPU 的内存常与系统共享，要把模型与图像缓冲算进预算。
+
+**English short answer**
+I look at the available column rather than free, because Linux uses spare memory as page cache and reclaims it when needed. Constant swap activity is a warning sign, and on a robot I try to avoid swapping since it adds unpredictable latency. If a process disappears, I check dmesg for the OOM killer, and to find leaks I watch the resident size over time and use a heap profiler.
+（中文：看 available 而非 free，因为 Linux 会把空闲内存用作页缓存并按需回收；持续换页是警告信号，机器人上要避免换页带来的不可预测延迟；进程消失时在 dmesg 里查 OOM killer；排查泄漏时观察驻留内存趋势并用堆分析器。）
+
+**追问方向**：`/proc/meminfo`；cgroup 内存限制；HugePages。
+
+### Q40 CMake 如何做交叉编译？toolchain 文件是什么？（CMake cross-compilation）
+**优先级：★★**
+
+**答案要点**
+- 交叉编译：在 x86 开发机上编译出 ARM（如 aarch64 的 RK3588）可执行文件。需要：交叉编译器（如 `aarch64-linux-gnu-g++`）、目标系统的 **sysroot**（目标板的头文件与库）。
+- CMake 用 **toolchain 文件**描述：`CMAKE_SYSTEM_NAME Linux`、`CMAKE_SYSTEM_PROCESSOR aarch64`、`CMAKE_C_COMPILER`/`CMAKE_CXX_COMPILER`、`CMAKE_SYSROOT`、`CMAKE_FIND_ROOT_PATH` 以及 `CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER`（程序在宿主找）、`..._LIBRARY/INCLUDE ONLY`（库与头文件在目标 sysroot 找）。
+- 使用：`cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=aarch64.cmake`，然后 `cmake --build build`，产物用 `file` 命令确认架构。
+- 常见坑：链接了宿主机的 `.so`（架构不符）；glibc 版本比目标板新导致运行时报 `GLIBC_x.y not found`；`pkg-config` 要设置 `PKG_CONFIG_SYSROOT_DIR`/`PKG_CONFIG_LIBDIR`。Docker 里放工具链可保证可复现（见 Q23）。
+- 与 CV 相关：P4 的 Hi3861 端在 PC 上用 OpenHarmony 构建工具链交叉编译后烧录。
+
+```cmake
+# 教学示例: aarch64.cmake
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_C_COMPILER   aarch64-linux-gnu-gcc)
+set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+set(CMAKE_SYSROOT /opt/sysroot-rk3588)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+```
+
+**English short answer**
+For cross-compiling with CMake I write a toolchain file that sets the target system, the cross compiler and the sysroot of the target board, and tells CMake to find libraries and headers in the sysroot but programs on the host. I then pass the file at configure time and check the output with the file command. The usual pitfalls are linking host libraries and a glibc version mismatch with the board.
+（中文：用 CMake 交叉编译时写 toolchain 文件，指定目标系统、交叉编译器和目标板 sysroot，并让库和头文件在 sysroot 中查找、程序在宿主机查找；配置时传入该文件，并用 file 命令检查产物；常见坑是链接了宿主机库和 glibc 版本与目标板不匹配。）
+
+**追问方向**：sysroot 如何制作；`qemu-user` 运行测试；交叉产物上不能直接用 `ldd`，改用 `readelf -d`。
 
 ---
 

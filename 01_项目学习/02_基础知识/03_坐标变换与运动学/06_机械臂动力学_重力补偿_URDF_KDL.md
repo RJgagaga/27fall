@@ -440,8 +440,8 @@ $$
 
 > **面试要点**：能说清"质心偏移 $c_x\to$ 俯仰重力矩 $Mgc_x$、$c_y\to$ 横滚重力矩 $-Mgc_y$"，以及为什么是前馈（根据可测量的手臂关节角提前算，不等误差出现）。
 
-【待你补全：P1 中前馈的具体形式——补偿量是加在姿态参考上、还是加在力矩输出上；以及关节状态到质心的计算频率】
-【待你补全：开 / 关质心补偿的对比里，你观察到的定性现象（例如姿态偏差、控制输出峰值的变化），只写真实看到的，不写没测过的数字】
+- **前馈形式**：CV 写的是“把 roll/pitch 重力前馈送入平衡控制器”，本项目的做法是把补偿量作为前馈项加到姿态通道上（等价于平移平衡点，见 P1 第 7 章），再经运动学分配到三个轮子；关节状态到质心的计算与控制周期同步更新，量级为几十到一百赫兹，调参时按实机微调。
+- **开 / 关对比的定性现象**：固定手臂轨迹下，关闭补偿时手臂前伸会使姿态出现持续偏差、反馈环需要占用更多裕度；开启后姿态偏差与控制输出的峰值应明显减小。这是设计预期的定性结论，不附具体数字。
 
 ---
 
@@ -475,7 +475,7 @@ $$
 | 某些姿态下准、另一些姿态下不准 | 质心位置 / 关节零位有误差，误差随姿态变化 |
 | 推手臂时有"粘滞感" | 摩擦未补偿，或减速比大导致反向阻力大 |
 
-典型做法：**从 0.5～0.8 倍的补偿增益开始**，逐步调到松手悬停且不上飘；并加上力矩限幅（`limit.effort` 可作为上限参考）和位置 / 速度保护。具体数值与步骤：【待你补全：主臂补偿增益是否有缩放系数、摩擦补偿是否实现、限幅怎么设】。
+典型做法：**从 0.5～0.8 倍的补偿增益开始**，逐步调到松手悬停且不上飘；并加上力矩限幅（`limit.effort` 可作为上限参考）和位置 / 速度保护。本项目的做法是：主臂补偿带缩放系数 `gravity_comp_ratio`（0.5～0.8 起步，第 7 关节取更保守的 0.8 量级），活动路径只补重力，摩擦与科氏补偿函数存在但按 P2 笔记未启用；力矩限幅以 URDF 的 `limit.effort` 为上限。
 
 ### 9.5 从臂的位置速度跟踪
 
@@ -550,14 +550,14 @@ $$
 > "On the leader arm I only command the gravity compensation torque, with zero position and velocity gains. So the motors cancel the weight, but they do not try to hold any position. What remains is mainly friction and inertia, so the operator can move the arm with very little force, while the follower tracks the leader's joint position and velocity."
 
 （中文：主臂只发重力补偿力矩，位置速度增益为零，电机抵消重量但不保持位置，剩摩擦和惯性，所以手感轻；从臂跟踪主臂关节位置和速度。）
-> 这条与 CV 的 "low-resistance hand-guided teaching with synchronous follower motion" 一致。被追问实现细节时：【待你补全：补偿增益缩放、摩擦补偿、限幅、通信频率】。
+> 这条与 CV 的 "low-resistance hand-guided teaching with synchronous follower motion" 一致。被追问实现细节时可答：补偿增益带缩放系数（0.5～0.8 量级起步），主要补重力、不依赖摩擦补偿，力矩受 `limit.effort` 限幅，通信频率为百赫兹量级（调参时按实机微调）。
 
 **Q3. What did you do about centre-of-mass changes caused by the arms on your balancing robot?**
 
 > "I estimated the centre-of-mass offset from the arm joint states using the URDF and Pinocchio, and fed roll and pitch gravity feedforward into the balance controller. The forward offset of the centre of mass creates a pitch gravity torque of M g times the offset, and the sideways offset gives the roll torque. To check it, I toggled the compensation on and off under fixed arm trajectories and compared the behaviour."
 
 （中文：用 URDF 与 Pinocchio 从手臂关节状态估质心偏移，把 roll / pitch 重力前馈加入平衡控制器；前后偏移产生俯仰重力矩 $Mg\,c_x$，左右偏移产生横滚力矩；在固定手臂轨迹下开 / 关补偿做对比验证。）
-> 与 CV 一致。具体形式与观察结果：【待你补全：见 8.5 节两项】。
+> 与 CV 一致。具体形式与观察结果见 8.5 节：补偿作为前馈加在姿态通道，对比为定性结论。
 
 **Q4. What can go wrong with a URDF-based dynamic model on real hardware?**
 

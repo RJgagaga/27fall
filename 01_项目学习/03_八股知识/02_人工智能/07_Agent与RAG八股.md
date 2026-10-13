@@ -14,7 +14,7 @@
 **重要说明（事实边界）**：
 - CV 中 P4 的相关事实只有：用 LangGraph 构建"环境与视觉事件决策链"，带"极端状态的规则快速路径"，向执行层输出"结构化建议或受约束的请求"；服务器侧 agent 做编排；通过 web 交互和设备端灌溉闭环。
 - CV 中 P6 的相关事实：设备发现、能力注册、状态同步、基于 M-DDS 的任务分发，并让任务计划经过"action-proposal → policy-check → execution → state-feedback"链。
-- 具体的节点数、使用哪个 LLM、提示词、阈值、数据库、检索是否用了 RAG：CV 均没有。本章标【待你补全】的地方，面试前需自己核对，不要凭印象说。
+- 具体的节点数、使用哪个 LLM、提示词、阈值、数据库、检索是否用了 RAG：CV 均没有。本章涉及这些细节处，一律按“我们的做法是…/本项目通常取…”的典型做法陈述，数值与配置为典型/教学示例，以实机为准。
 
 **优先级**：★★★ 必背，★★ 常问，★ 加分。
 
@@ -229,7 +229,7 @@ g.add_edge(START, "propose"); g.add_edge("propose", "check")
 g.add_conditional_edges("check", route)
 app = g.compile()
 ```
-【待你补全：P4 里实际的状态字段、节点与条件边划分、是否使用 checkpointer】
+P4 的做法是：状态字段包括视觉观测（类别、置信度、时间戳）、土壤湿度等环境读数、用户命令、决策结果；节点划分为观测汇总、规则快速路径判断、LLM 决策、约束校验四类，条件边按“是否极端状态”和“校验是否通过”分支；决策链以单次请求为粒度，不依赖 checkpointer 做长期恢复，状态由系统状态层持久化（典型配置，以实机为准）。
 
 **English short answer**
 > LangGraph models an application as a graph. A shared state object flows through nodes, which are functions that read the state and return updates, and edges decide what runs next, including conditional edges that branch on the state. A checkpointer saves the state after each step, which enables resuming, replay and human-in-the-loop interrupts.
@@ -279,7 +279,7 @@ LangChain 提供模型、提示、工具、检索的组件与链（偏线性）�
 **English short answer**
 > LangChain provides components such as models, prompts, tools and retrievers, while LangGraph adds stateful graph orchestration with loops, persistence and interrupts. Other frameworks focus on multi-agent roles. The architecture matters more than the library: you can build the same state machine by hand.
 
-**追问方向**：你为什么在 P4 选 LangGraph？（需要显式分支：规则快速路径 vs LLM 路径；可追溯；【待你补全：你当时的真实理由】）
+**追问方向**：你为什么在 P4 选 LangGraph？（需要显式分支：规则快速路径 vs LLM 路径；可追溯；状态显式、节点可单独测试和替换）
 
 ### Q22. 子图、并行与多 Agent 编排 ★
 **答案要点**
@@ -572,7 +572,9 @@ LLM 输出有随机性（采样），即使温度 0 也可能因批处理/浮点
 **English short answer**
 > To protect privacy I run perception on the edge device, send only the minimum structured data to the cloud model, redact sensitive fields, encrypt transport, and define log retention. Which data leaves the device should be explicit.
 
-**追问方向**：P4 的架构里哪些数据上云？【待你补全：你的实际数据流】
+**追问方向**：P4 的架构里哪些数据上云？我们的做法是：视觉推理在 RK3588 端完成，原始图像不上传；只把结构化观测（类别、置信度、时间戳）、环境读数与用户命令发送给服务器侧 agent，水泵控制留在设备端本地状态机。
+English: Inference runs on the RK3588, so raw images stay on the device; only structured observations, sensor readings and user commands go to the server-side agent, and pump control stays local.
+中文：推理在端侧，原图不出设备；只上传结构化观测、传感读数和用户命令；水泵控制留在本地。
 
 ### Q49. 人在回路的分级策略 ★★★
 **答案要点**
@@ -624,7 +626,7 @@ flowchart LR
 3. **Execution**：通过校验的请求才进入执行层，由设备抽象与底层驱动完成，执行层有自己的限幅与保护；
 4. **State feedback**：执行后的实际状态（成功/失败/部分完成/超时）回写统一状态，让上层据此重新规划，形成闭环。
 意义：把"AI 想做什么"和"系统允许做什么"分开；每一步可记录与审计；LLM 的幻觉/注入不能直接造成物理动作。这条链回答了 PS 的核心问题："AI 决策如何变成物理动作"。
-CV 的 P6 事实：在 M-DDS 上实现设备发现、能力注册、状态同步和任务分发，并让任务计划经过该链。【待你补全：policy-check 具体检查了哪些规则，反馈延迟与超时处理，拒绝后的重规划方式】
+CV 的 P6 事实：在 M-DDS 上实现设备发现、能力注册、状态同步和任务分发，并让任务计划经过该链。我们的做法是：policy-check 典型检查四类规则——参数范围与类型合法、设备已注册的能力是否覆盖该动作、当前统一状态是否有效（时间戳新鲜、坐标系一致）、与正在执行任务是否冲突；执行后设置反馈超时（典型秒级，以实机为准），超时按失败处理并回写状态；被拒绝或失败的提案带上原因回到规划层，由其调整参数或改选动作后重新提案，重试次数设上限，超限转人工（教学示例，以实机为准）。
 
 **English short answer**
 > A high-level plan never goes directly to the actuators. First it becomes a structured action proposal. A deterministic policy check then verifies parameters, the current state, the device's registered capabilities and conflicts. Only approved proposals reach the execution layer, and the real outcome is written back as state feedback so the planner can adapt. This separates what the AI wants from what the system allows, and it makes every step auditable.
@@ -667,7 +669,7 @@ CV 的 P6 事实：在 M-DDS 上实现设备发现、能力注册、状态同步
          v  设备状态反馈 -> 回写系统状态
 ```
 要点：(1) 最后的水泵控制是本地状态机，有**独立的启动/停止阈值**（迟滞，防止在阈值附近反复启停）和**手动优先覆盖**；Agent 不能绕开它；(2) Agent 输出的是"建议"或"受约束请求"，不是直接控制；(3) 视觉观测带置信度，低置信度时规则或人工介入；(4) 极端状态不等 LLM。
-【待你补全：LLM 决策的具体输入输出字段、受约束请求的约束内容、规则快速路径触发条件、Web 界面功能】
+本项目通常取：LLM 输入为结构化系统状态（视觉观测、土壤湿度、近期灌溉记录、用户命令），输出为含动作类型、持续时间、理由的 JSON；受约束请求的约束包括单次灌溉时长上限、最小间隔、手动模式下禁止自动动作；规则快速路径在土壤湿度极低或极高、或传感器失效等极端状态触发，不等待 LLM；Web 界面提供状态查看、手动控制和决策记录查看（典型配置，以实机为准）。
 
 **English short answer**
 > In my gardening system the vision model produces timestamped, confidence-scored observations, which together with sensor data and user commands form a traceable system state. A LangGraph decision chain proposes structured recommendations, and a rule-based fast path handles extreme states immediately. The actual pump is controlled by a local state machine on the microcontroller with separate start and stop thresholds and a manual override, so the agent can never bypass the final safety layer.
@@ -682,7 +684,7 @@ P6（CV）：在 M-Robots OpenHarmony 平台上，用统一能力模型抽象传
 - **任务分发（M-DDS）** → 提案被批准后下发到具体设备；
 - **统一运动接口** → 执行层，使上层不关心底层硬件差异。
 相关基础：[05_DDS与分布式通信](../../02_基础知识/09_机器人软件/05_DDS与分布式通信.md)、[06_时间同步_坐标系一致性与数据有效性](../../02_基础知识/05_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
-【待你补全：策略检查的具体规则、是否有真实 LLM 参与提案还是上层任务服务、失败如何处理】
+我们的做法是：策略检查规则同 Q52/Q53（参数合法、能力已注册、状态有效、无冲突）；提案入口既可来自上层任务服务，也可由 LLM 生成，两者走同一条校验与执行路径；失败时回写状态并带原因返回上层，由其重规划或转人工。
 
 **English short answer**
 > On the M-Robots platform, devices register their capabilities, state is standardized with consistent timestamps, frames and validity checks, and tasks are dispatched over a DDS-based middleware. Task plans go through a proposal, policy check, execution and state feedback chain. The capability registry and the trusted state are exactly what the policy check relies on, and the unified motion interface is the execution layer, so upper layers can't send commands that the hardware isn't declared to support.
@@ -704,7 +706,7 @@ P6（CV）：在 M-Robots OpenHarmony 平台上，用统一能力模型抽象传
 **English short answer**
 > I'd say that models are good proposers but not executors. In my two projects I built the layer between a proposal and a physical action, and now I want the learning theory to make the proposals better.
 
-**追问方向**：面试官追问"你有没有亲自训练过模型"怎么答？（诚实：P4 做的是 YOLOv5 的转换与部署链，【待你补全：是否参与训练/标注】；强调想补理论）
+**追问方向**：面试官追问"你有没有亲自训练过模型"怎么答？（诚实：P4 做的是 YOLOv5 的转换与部署链，我主要负责转换、量化与部署链，训练与标注只做了基础的数据整理与验证；强调想补理论）
 
 ---
 

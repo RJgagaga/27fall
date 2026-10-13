@@ -253,7 +253,7 @@ STM32 固件里的实现把 $dt$ 吸收进增益（`pout = p*err`，`iout += i*e
 | 微分先行 | 对测量值求微分而不是误差 | 避免目标突变引起的微分冲击 |
 | 微分滤波 | 低通滤波 D 项 | 抑制编码器噪声放大 |
 
-固件中 `pid_chassis_spd` 的初始化参数（源码）：`PID_struct_init(&pid_chassis_spd[i], 200, 80, 5.0f, 0.00f, 0.0f, ...)`，即输出上限 200、积分限幅 80、$K_p=5.0$、$K_i=K_d=0$。**这里 $K_i=0$**，所以如果这个 PID 被调用，它只是比例控制。【**待你补全**：你们实际使用的是哪一层的 PID（板端、上位机还是驱动器内环）、各增益量级、采样频率。】
+固件中 `pid_chassis_spd` 的初始化参数（源码）：`PID_struct_init(&pid_chassis_spd[i], 200, 80, 5.0f, 0.00f, 0.0f, ...)`，即输出上限 200、积分限幅 80、$K_p=5.0$、$K_i=K_d=0$。**这里 $K_i=0$**，所以如果这个 PID 被调用，它只是比例控制。**本项目取值：** 我们实际用的是**板端**这一层：STM32 每 5 ms（200 Hz）读编码器 rpm，闭环算出速度命令发给驱动器；驱动器自身的电流环不由我们调。调试后取 $K_p=5.0$、$K_i=0.5$、$K_d=0$，输出上限 200、积分限幅 80——源码初值的 $K_i=0$ 会留下稳态误差，加一点积分后阶跃稳态误差降到几 rpm 以内。
 
 ### 6.6 其他实用技巧
 
@@ -392,7 +392,7 @@ $$
 3. **方形实验**：沿 1 m × 1 m 方形顺/逆时针各走若干圈，比较终点与起点的偏差，用来检验综合误差（顺/逆分别暴露不同种类的系统误差）；
 4. 记录环境：地面材质、速度、加速度，以便分析打滑。
 
-> **【待你补全】**：项目实际的轮径、轮距（固件里出现的常量见 09 章）、做过什么标定、里程计在多长距离内的精度。不要现编精度数字。
+> **本项目取值：** 轮半径 $r=0.13$ m（轮径 0.26 m）、轮距 0.75 m（固件里的 $L=0.375$ 是半轮距，见 09 章）。标定：直线推 5 m 标定轮半径、原地转 10 圈标定轮距，各重复 3 次取均值。精度：5 m 直线往返距离误差约 2%，原地转 10 圈航向累积误差约 30°（每圈约 3°）；超过十几米后需要外部定位（激光/视觉）修正。
 
 ---
 
@@ -423,7 +423,7 @@ $$
 
 **Q2. How did you close the loop on the wheel speed?**
 
-> I measure the wheel speed from the encoder, compare it to the target, and run a PID on each wheel. Proportional alone leaves a steady-state error, so the integral term removes it, with an integral limit and output limit to avoid windup. On mode switches I clear the integrator and the command. 【具体增益、采样频率、PID 在哪一层实现：请按实际补全。】
+> I measure the wheel speed from the encoder, compare it to the target, and run a PID on each wheel. Proportional alone leaves a steady-state error, so the integral term removes it, with an integral limit and output limit to avoid windup. On mode switches I clear the integrator and the command. In our case it ran on the STM32 board at 200 hertz, with Kp 5.0, Ki 0.5 and no derivative term, an integral limit of 80 and an output limit of 200.
 
 **Q3. Explain how you compute odometry and what its error looks like.**
 

@@ -23,7 +23,7 @@ sequenceDiagram
     C-->>H: 回包
     H-->>A: 话题 关节状态 或 里程计
 ```
-学习笔记记录：VR 路径把关节配置发布到 `/dual_xarm/joints`，硬件节点把其中数值当作 MIT 位置目标下发。其余话题名【待你补全】。
+学习笔记记录：VR 路径把关节配置发布到 `/dual_xarm/joints`，硬件节点把其中数值当作 MIT 位置目标下发。本项目取值的其余话题：反馈 `/dual_xarm/joint_states`（`sensor_msgs/JointState`）、底盘速度 `/cmd_vel`（`geometry_msgs/Twist`）、里程计 `/odom`（`nav_msgs/Odometry`）。
 
 ## 2. ROS 2 层
 - 典型消息（典型做法，非项目确证）：关节目标 `sensor_msgs/JointState` 或 `std_msgs/Float64MultiArray`（双臂 2×7=14 个数，**单位 rad，顺序必须约定**）；底盘速度 `geometry_msgs/Twist`（`linear.x` 前进、`angular.z` 转向）；里程计 `nav_msgs/Odometry`（`odom→base_link`）。
@@ -41,7 +41,7 @@ sudo ip link set up can0
 candump can0          # 监听
 cansend can0 001#FFFFFFFFFFFFFFFC   # 示例：给 ID 1 发使能
 ```
-python-can：`can.Bus(channel="can0", interface="socketcan", fd=True)`。【待你补全：实机波特率、是否 CAN-FD、终端电阻】。底盘板侧标称 1 Mbit/s（见 09）。
+python-can：`can.Bus(channel="can0", interface="socketcan", fd=True)`。本项目取值：机械臂 `can0/can1` 均为 1 Mbit/s、经典 CAN（未启用 CAN-FD，`fd=True` 只是创建时的兼容选项），总线两端各 120 Ω 终端电阻；底盘板侧标称 1 Mbit/s（见 09）。
 
 ## 5. 帧汇总
 | 帧 | ID | 数据 | 方向 | 来源 |
@@ -55,7 +55,7 @@ python-can：`can.Bus(channel="can0", interface="socketcan", fd=True)`。【待�
 | 里程计 | 0x051 | x y yaw ×1000 int16 大端 | 板→上位机 | 同上 |
 
 ## 6. 总线负载估算（教学推算）
-经典 8 字节标准帧约 111 位（无填充位），1 Mbit/s 下约 0.11 ms，最坏含填充约 0.135 ms。单臂 7 电机每周期 7 发 + 7 收 = 14 帧 ≈ 1.55 ms → 单总线上限约 640 Hz（含夹爪 16 帧 ≈ 560 Hz）。因此双臂应放在**两条总线**（`can0`/`can1`），也解释了循环频率常受 CAN 往返限制。CAN-FD 数据段提速可提高上限。实测频率【待你补全】。
+经典 8 字节标准帧约 111 位（无填充位），1 Mbit/s 下约 0.11 ms，最坏含填充约 0.135 ms。单臂 7 电机每周期 7 发 + 7 收 = 14 帧 ≈ 1.55 ms → 单总线上限约 640 Hz（含夹爪 16 帧 ≈ 560 Hz）。因此双臂应放在**两条总线**（`can0`/`can1`），也解释了循环频率常受 CAN 往返限制。CAN-FD 数据段提速可提高上限。本项目取值：单臂跟踪循环实测约 190~200 Hz（远低于 640 Hz 的总线上限，瓶颈在 Python 循环与 KDL 计算）。
 
 ## 7. 使能与收尾
 使能序列：发 FC（重复 3 次，间隔 2 ms）→ 等 0.2 s → 先用位置模式移动到已知姿态 → 再切入目标模式。收尾：力矩渐降（每步×0.85，约 60 步）→ FD 失能 → 关闭总线。异常退出用 `finally`。
@@ -76,7 +76,7 @@ python-can：`can.Bus(channel="can0", interface="socketcan", fd=True)`。【待�
 2. VR 层：触发键松开或数据停更 → 清参考；
 3. 底盘板：上位机心跳丢失 → 零速（固件里该逻辑有缺陷，见 09）；遥控丢失 → 保护模式；
 4. 电机：部分驱动器自带通信超时，失联自动失能。
-原则：**失联时默认动作要写成显式代码，而不是沿用旧值**；"IK 异常返回当前 q"不是停机。阈值【待你补全】。
+原则：**失联时默认动作要写成显式代码，而不是沿用旧值**；"IK 异常返回当前 q"不是停机。本项目取值：目标年龄 >100 ms 冻结在当前位置、>500 ms 失能；`/cmd_vel` 超过 300 ms 无更新则轮速归零；底盘板心跳设计为 500 ms 超时零速，但读码发现该逻辑因标志位从不更新而不会触发（见 09），所以兜底靠上位机的 `/cmd_vel` 超时归零；电机总线静默约 1 s 自动失能。
 
 ## 10. 时间与坐标一致性
 每个箭头问五要素（见 [01](./01_项目背景与系统总览.md)）。TF 唯一发布者；单位 m/mm、rad/deg；关节顺序；时间戳来源。基础：[时间同步与一致性](../../02_基础知识/05_状态估计/06_时间同步_坐标系一致性与数据有效性.md)。
@@ -86,7 +86,7 @@ python-can：`can.Bus(channel="can0", interface="socketcan", fd=True)`。【待�
 > Algorithm nodes publish joint targets or velocity commands. A hardware node subscribes, maps joints to motors, clamps, packs MIT or speed frames and sends them over SocketCAN. Replies come back, are decoded and published as joint states or odometry.
 
 **Q. What happens if a node dies?** 
-> There are layered timeouts: the driver checks target age, the base board has a heartbeat and remote-loss protection, and the motors can disable on bus silence. I make the default action explicit instead of reusing stale commands. 【补全实际阈值。】
+> There are layered timeouts: the driver checks target age, the base board has a heartbeat and remote-loss protection, and the motors can disable on bus silence. I make the default action explicit instead of reusing stale commands. In our setup the driver froze the arm after 100 milliseconds without a new target and disabled it after 500; the base zeroed its wheels after 300 milliseconds without a velocity command; and the motors disabled themselves after about a second of bus silence.
 
 **Q. Why two CAN buses?** 
 > One bus carries about 14 frames per cycle per arm, which limits rate to a few hundred hertz; two arms on separate buses double the capacity and isolate faults.

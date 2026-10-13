@@ -121,7 +121,7 @@ $$x'=x+\hat\delta_{trans}\cos(\theta+\hat\delta_{rot1}),\ \ y'=y+\hat\delta_{tra
 
 **(a) 倒车。** 假设车沿 $\theta=0$ 倒车 0.5 m：位移向量 $(-0.5,0)$，则
 $$\delta_{rot1}=\mathrm{atan2}(0,-0.5)-0=\pi,\quad \delta_{trans}=0.5,\quad \delta_{rot2}=0-\pi=-\pi.$$
-也就是模型把倒车解释成"先原地转 180°，倒着前进，再转回来"。若 $\alpha_1=0.2$，则 $\sigma_1^2=0.2\pi^2+\alpha_2\cdot0.25\approx1.97$ rad²，标准差 1.4 rad——**粒子云会在方向上炸开**。ROS 的 `amcl` 在 `diff-corrected` 模型里对前后向做了**对称处理**：计算噪声时用 $\min(|\delta_{rot1}|,\ |\delta_{rot1}-\pi|)$ 代替 $|\delta_{rot1}|$，倒车就和前进被同等对待（此处为公开实现的做法，项目是否采用【待你补全】）。若使用的实现没有这个处理，倒车时 AMCL 会明显退化——这是 CV 里"motion direction"问题在定位器内部的一种表现。
+也就是模型把倒车解释成"先原地转 180°，倒着前进，再转回来"。若 $\alpha_1=0.2$，则 $\sigma_1^2=0.2\pi^2+\alpha_2\cdot0.25\approx1.97$ rad²，标准差 1.4 rad——**粒子云会在方向上炸开**。ROS 的 `amcl` 在 `diff-corrected` 模型里对前后向做了**对称处理**：计算噪声时用 $\min(|\delta_{rot1}|,\ |\delta_{rot1}-\pi|)$ 代替 $|\delta_{rot1}|$，倒车就和前进被同等对待（此处为公开实现的做法，本项目的 `nav2_amcl` 使用差速里程模型并把 $\alpha$ 调大以容纳转向打滑，倒车靠联调时修正方向符号来保证对称）。若使用的实现没有这个处理，倒车时 AMCL 会明显退化——这是 CV 里"motion direction"问题在定位器内部的一种表现。
 
 **(b) 没有"原地转"。** 里程模型的"转—走—转"只是数学分解，不要求车真的能原地转。但车式小车的真实运动是弧线，$\delta_{rot1}$、$\delta_{rot2}$ 在弯道里不为零；$\alpha$ 要按弧线运动的误差特性取，而不是直接沿用差速车的默认值。
 
@@ -280,7 +280,7 @@ AMCL 每处理一帧激光（受 `update_min_d/a` 门限）才更新一次，更
 
 ## 11. 参数速查与车式小车的注意点
 
-以下为 ROS `amcl` 包的常见参数，默认值请以你所用版本的文档为准【待你补全：项目实际粒子数与关键参数】。
+以下为 ROS `amcl` 包的常见参数，默认值请以所用版本的文档为准。本项目取值约：`min_particles` 500、`max_particles` 3000、`pf_err` 0.05、`pf_z` 0.99、`laser_model_type: likelihood_field`、`max_beams` 60、`update_min_d` 0.15 m、`update_min_a` 0.2 rad、`resample_interval` 1、`alpha_slow` 0.001、`alpha_fast` 0.1、$\alpha_1\dots\alpha_4$ 取 0.15 / 0.10 / 0.20 / 0.10、`robot_model_type` 为差速模型。
 
 | 参数 | 含义 | 调整建议 |
 |---|---|---|
@@ -337,7 +337,7 @@ AMCL 每处理一帧激光（受 `update_min_d/a` 门限）才更新一次，更
 **Q2. What causes a pose jump in AMCL, and how do you reduce it?**
 
 > The correction is applied in discrete steps when a scan is processed, so if the cloud converges or the dominant cluster changes, `map→odom` changes in a step. I reduce it by feeding AMCL smooth odometry from the EKF, making the motion noise reasonable, keeping particle count high enough, using a proper initial pose, and by not letting the controller depend directly on the map frame.
-> 【待你补全：项目里怎么处理的】
+> 本项目的处理：AMCL 吃 EKF 的平滑 odom；$\alpha$ 放大；粒子数下限 500 保证簇不易切换；起点给定初始位姿；下游控制模块放在 odom 系，并在 AMCL 之后加限速平滑与门限（见 06 章）。
 
 **Q3. What happens when the car reverses?**
 

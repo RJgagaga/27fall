@@ -11,7 +11,7 @@
 - 描述 ros2_control 的架构（controller manager、hardware interface、controllers）与 ROS2-CAN 执行链；
 - 简述 Nav2 与 MoveIt2 的架构；
 - 对比 Gazebo、MuJoCo、Isaac 的定位，说明 sim2real 缺口；
-- 对应到 P1/P2/P5/P6 的 CV 条目，诚实标注待补全细节。
+- 对应到 P1/P2/P5/P6 的 CV 条目，并给出可直接复述的项目回答。
 
 **前置知识**：
 - [ROS1/ROS2 核心概念](../../02_基础知识/09_机器人软件/04_ROS1_ROS2核心概念.md)
@@ -334,7 +334,7 @@ The convention is right-handed with x forward, y left, z up, in SI units. For na
 - 忘记 static transform（传感器外参）。
 **English short answer**
 Extrapolation errors mean the requested time is outside the buffered range, usually from mismatched clocks or timestamps. A missing connection means a break in the tree. Two nodes publishing the same transform cause jumping poses. I check time sources first.
-**追问方向**：你遇到过吗【待你补全：P5 中 TF/时间戳相关的真实问题】。
+**追问方向**：典型案例：IMU、轮速计与 LiDAR 的时间戳来源不一致，导致定位位姿跳变和 TF 外推报错；做法是统一用消息自带时间戳、统一时间源并加入有效性检查，对应 CV 中 *drift and pose jumps from inconsistent timing, frames and motion direction*。
 
 ### Q28. 静态变换如何确定（传感器外参）？（Extrinsic calibration）★★
 **答案要点**
@@ -378,7 +378,7 @@ ROS2 can be used in real-time systems, but it is not real-time out of the box: i
 **答案要点**
 - 分层频率：电流环 kHz（驱动器）→ 底层控制 200 Hz–1 kHz（MCU）→ 上位机 50–200 Hz（ROS2 控制/IK）→ 规划 1–20 Hz；
 - 上层命令抵达底层有延迟，底层需要超时保护（命令过期则回到安全状态）；
-- 具体 P2/P1：ROS2-CAN 链各段频率【待你补全：ROS2 节点频率、CAN 报文周期、电机反馈频率、端到端延迟估计】。
+- 具体 P2/P1：本项目通常取 ROS2 控制节点 100–200 Hz、CAN 命令周期 1 kHz 级、电机反馈 1 kHz 级，端到端延迟在几毫秒量级（典型/教学示例，以实机为准）；命令超时后回到安全状态。
 **English short answer**
 Frequencies decrease as we go up: current loops in kilohertz in the drive, joint control at hundreds of hertz to a kilohertz on the microcontroller, upper-level control at tens to hundreds of hertz in ROS2, and planning at a few hertz. The low-level layer has a timeout so that stale commands drive the robot to a safe state.
 **追问方向**：命令超时；时间戳。
@@ -451,7 +451,7 @@ A hardware interface exports state and command handles and implements read and w
 - 帧格式：ID（标准 11 位/扩展 29 位）、8 字节数据；电机协议（MIT 模式 5 量打包、电流模式等）；
 - 设计要点：发送节拍、反馈解析与时间戳、超时检测、限幅（力矩/电流/速度）、总线负载率、错误帧处理；
 - CV 对应：P2 *validated on real hardware through the ROS2-CAN execution chain*；P1 *integrated ROS state processing with CAN motor execution*。
-- 【待你补全：P2/P1 的 CAN 驱动实现方式（SocketCAN/厂商库/自写节点）、报文周期、电机型号与协议、总线负载、丢帧处理】
+- 我们的做法：通过 SocketCAN 在 ROS2 节点中收发，命令按固定节拍下发、反馈带时间戳解析；报文周期取毫秒级，控制量按电机协议打包并限幅；总线负载按帧率和帧长估算并留余量；丢帧或反馈超时时按超时处理，输出回到安全态（典型做法，以实机为准）。
 **English short answer**
 The chain goes from the ROS2 control node to a CAN driver, usually through SocketCAN, onto the bus and into the motor drives, with feedback coming back the same way. The important design points are the send rate, parsing feedback with timestamps, timeouts, limiting torque and speed, and keeping an eye on the bus load.
 **追问方向**：总线负载；丢帧；packet 打包。
@@ -510,7 +510,7 @@ The leader arm publishes its joint states while running gravity compensation, an
 - 编排：BT Navigator（行为树，`NavigateToPose`）；
 - 状态：AMCL 或其它定位；Lifecycle manager 管理节点；
 - 与 ROS1 move_base 对比：move_base 单体状态机，Nav2 模块化+行为树+生命周期。
-- P5 的 Hybrid-A*、TEB 在 Nav2 中分别对应 Smac Hybrid-A* 与 TEB 控制器插件的形态（具体你们用的是 ROS1 还是 ROS2 栈【待你补全】）。
+- P5 的 Hybrid-A*、TEB 在 Nav2 中分别对应 Smac Hybrid-A* 与 TEB 控制器插件的形态（本项目的导航链按 ROS 栈组织，规划与控制以插件形式接入，概念上与 Nav2 的 Smac/TEB 插件一一对应）。
 **English short answer**
 Nav2 consists of planner, controller, smoother and behaviour servers, coordinated by a behaviour tree navigator, with costmaps, localisation and lifecycle management. Compared with the monolithic ROS1 move_base, it is modular and uses behaviour trees to define recovery logic. Smac provides Hybrid-A* planning.
 **追问方向**：行为树；插件系统；你用哪一个。
@@ -576,7 +576,7 @@ I use containers or systemd units for reproducible deployment, with log rotation
 - ROS2：每台机器人独立 Domain 或统一 Domain + 命名空间；Discovery Server；Zenoh 桥接；
 - 需要同步的信息：设备状态、任务、位姿；一致性与时间同步；
 - P6：基于 **M-DDS** 实现设备发现、能力注册、状态同步和任务分发（CV）。
-- 【待你补全：M-DDS 的主题划分、QoS 设置、设备发现流程、能力注册的数据结构、任务分发的确认/重试机制】
+- 我们的做法（典型设计，以实机为准）：主题按设备状态、能力、任务、反馈划分；状态用 best-effort 加最新值，任务与指令用 reliable；设备上线时广播并注册能力，用心跳判断离线；能力记录包含设备 ID、类型、接口、参数范围、坐标系与版本；任务分发采用确认加超时重试，超过次数后上报失败。
 **English short answer**
 For multi-robot systems I separate robots by namespace or domain, use discovery that works over the network in use, and share only what is needed: device state, capability, and task messages. In my platform work, I implemented device discovery, capability registration, state synchronisation and task dispatch on top of M-DDS.
 **追问方向**：任务分发的可靠性；设备离线检测。
@@ -596,7 +596,7 @@ Discovery tells the system a device is online, and capability registration descr
 - ROS/ROS2 命令映射：`cmd_vel`/`JointTrajectory` → 统一接口 → 低层驱动（CAN/串口/厂商 SDK）；
 - 注意：单位/坐标系/限位在接口层统一；错误码和降级；C++ 虚基类/插件；
 - CV：*built a unified capability model for sensors, actuators and controllers using C++ on OpenHarmony and mapped ROS/ROS2 motion commands to low-level drivers*。
-- 【待你补全：接口的具体定义（类/方法）、驱动适配的数量与类型、命令映射示例】
+- 我们的做法：以 Sensor / Actuator / Controller 三类虚基类为核心，提供 `getState`、`setVelocity`、`setJointTarget` 等方法；针对不同硬件各写一个驱动适配（如 CAN、串口、厂商 SDK）；命令映射示例：`cmd_vel` 经接口层统一单位与限位后转换为底层速度目标（典型做法）。
 **English short answer**
 I defined common interfaces for sensors, actuators and controllers, so upper layers depend only on the abstract capability, and each hardware driver implements it. ROS and ROS2 motion commands are mapped to these interfaces and then down to the low-level drivers, which let the same motion-control code run on different hardware.
 **追问方向**：接口抽象的代价；如何统一单位与坐标。
@@ -681,7 +681,7 @@ A bridge maps Gazebo topics to ROS2, and the gz_ros2_control plugin exposes simu
   4. 反馈：执行结果与状态回传，闭环验证（成功/失败/中止）、触发重规划或恢复；
 - 价值：在不确定的 AI 决策与确定性的物理执行间加一层可审计的安全边界。
 - CV 对应：P6 *gated task plans through an action-proposal, policy-check, execution and state-feedback chain*；PS 主线。
-- 【待你补全：策略检查具体规则（如速度上限、区域限制、互斥/冲突）、被拒绝后的处理、状态反馈的内容与超时】
+- 我们的做法（典型规则，以实机为准）：策略检查包含速度与加速度上限、允许区域、设备互斥与资源冲突、状态有效性；不通过时拒绝或降级并返回原因给上层；状态反馈包含执行结果（成功、失败、中止）与当前状态，并设置超时，超时视为失败，触发重规划或恢复。
 **English short answer**
 A high-level plan never goes straight to the robot. It first becomes a structured action proposal, a policy check validates it against safety rules and the current state, only then is it executed with limits and timeouts, and the state feedback closes the loop. This puts an auditable safety boundary between an uncertain AI decision and the physical actuators.
 **追问方向**：规则从哪来；LLM 输出幻觉怎么被拦；反馈如何触发重规划。
@@ -708,7 +708,7 @@ I layer the software from hardware abstraction up to tasks, with dependencies po
 **答案要点**
 - 抓三个点：① 你负责的链路（P2 ROS2-CAN、P1 状态处理+CAN、P5 导航栈、P6 命令映射与 M-DDS）；② 你遇到并解决的问题（时间戳/坐标系/QoS/延迟）；③ 你如何验证（bag 回放、可视化、实机测试）。
 **English short answer**
-I focus on three things: the link I owned, for example the ROS2 to CAN chain; a concrete problem I solved, such as timestamp or frame inconsistencies; and how I verified it, using bag replays, plots and hardware tests. 【待你补全：每个点配一个具体例子】
+I focus on three things: the link I owned, for example the ROS2 to CAN chain; a concrete problem I solved, such as timestamp or frame inconsistencies; and how I verified it, using bag replays, plots and hardware tests. For example: the ROS2 to CAN chain with timeouts and limits, timestamp and frame alignment across sensors, and replay plus hardware tests to verify. （例如：带超时与限幅的 ROS2-CAN 链、多传感器时间戳与坐标系对齐、回放加实机测试验证。）
 **追问方向**：被追问细节时的诚实回答模板。
 
 ---

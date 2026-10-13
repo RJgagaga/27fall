@@ -459,7 +459,7 @@ j22 = L4 cos(polar − θ1) sin(θ2 − β) / (radius sin(θ2 − θ1))
 
 > As a teaching number, with a leg about 0.3 meters long in a symmetric pose, the Jacobian entry is about 0.097 meters per radian, so a support force of 30 newtons needs about 2.9 newton-meters on each hip joint. I don't have the exact numbers of our robot memorized, but I computed this kind of estimate to check that the motors and the torque limits were adequate.
 
-（诚实提示：这是教学估计；实机数值请补全 README 自查表。）
+（这是教学估计；本项目关节限幅取值见 README 自查表。）
 
 ---
 

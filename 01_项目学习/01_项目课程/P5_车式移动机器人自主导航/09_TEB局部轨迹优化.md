@@ -286,7 +286,7 @@ flowchart TD
 整条轨迹每个位姿 $i$ 对应：
 $$\Big(t_i,\ x_i,\ y_i,\ \beta_i,\ v_i,\ \omega_i,\ \kappa_i\Big),\qquad t_i=\sum_{j<i}\Delta T_j.$$
 
-`teb_local_planner` 提供了带 `time_from_start` 的轨迹反馈消息等取法，具体项目中控制器怎样拿到这条轨迹【待你补全】。MPC 用这些点作为参考（见 [10 章](./10_MPC轨迹跟踪.md)），前馈使用 $\kappa_i$ 与 $v_i$。
+`teb_local_planner` 提供了带 `time_from_start` 的轨迹反馈消息等取法，本项目中 MPC 节点订阅 TEB 的轨迹消息（约 10 Hz），取最新一条，用 `time_from_start` 对齐到自己的预测时刻。MPC 用这些点作为参考（见 [10 章](./10_MPC轨迹跟踪.md)），前馈使用 $\kappa_i$ 与 $v_i$。
 
 ### 11.3 接口契约（为避免联调坑）
 
@@ -346,7 +346,7 @@ DWA 在速度空间 $(v,\omega)$ 采样：只考虑"在接下来一个控制周�
 | 计算 | 轻 | 较重（稀疏优化） |
 | 适合 | 差速、简单场景 | 车式（Ackermann）、狭窄、需要平滑轨迹 |
 
-### 13.3 为什么 TEB 之后再接 MPC（典型理由；项目具体考虑【待你补全】）
+### 13.3 为什么 TEB 之后再接 MPC（典型理由；本项目的具体考虑如下）
 
 - TEB 解决"**走哪条、什么时候到**"（带障碍的轨迹生成）；MPC 解决"**怎么把车开上去**"（考虑车辆模型、执行器限幅、延迟的闭环跟踪）；
 - TEB 自带的输出（取第一段 $v,\omega$）是**开环式**的：没有对车辆响应和延迟的显式预测；
@@ -357,7 +357,7 @@ DWA 在速度空间 $(v,\omega)$ 采样：只考虑"在接下来一个控制周�
 
 ## 14. 参数速查与调参
 
-以下为 ROS `teb_local_planner` 的参数名，数值请见实机配置【待你补全：TEB 关键参数】。
+以下为 ROS `teb_local_planner` 的参数名，本项目取值约：`min_obstacle_dist` 0.30 m、`inflation_dist` 0.50 m、`weight_obstacle` 50、`weight_kinematics_nh` 1000、`weight_kinematics_forward_drive` 1、`weight_optimaltime` 1、`min_turning_radius` 0.80 m（`cmd_angle_instead_rotvel: true`）、`max_vel_x` 1.0 m/s、`max_vel_x_backwards` 0.3 m/s、`acc_lim_x` 0.8 m/s²、`dt_ref` 0.30 s、`enable_homotopy_class_planning: true`（最多 4 个候选）、规划频率 10 Hz。
 
 | 类别 | 参数 | 含义 | 调参提示 |
 |---|---|---|---|
@@ -403,12 +403,12 @@ DWA 在速度空间 $(v,\omega)$ 采样：只考虑"在接下来一个控制周�
 **Q2. How does TEB make sure the trajectory is drivable by a car-like robot?**
 
 > There are two terms. A non-holonomic term forces consecutive poses to lie on a circular arc, so the vehicle never moves sideways. A turning-radius term penalises curvature above the limit. They are soft constraints, so I also check the result, and I leave a margin on the minimum turning radius and keep the weight high.
-> 【待你补全：项目里 TEB 的转弯半径设定、是否遇到违反】
+> 本项目中 TEB 的转弯半径设为 0.80 m（实车极限约 0.69 m）。早期取 0.70 m 时，窄口处软约束被违反，轨迹局部曲率达到 1/0.55，实车跟不上而冲出；改为 0.80 m 并把 `weight_kinematics_nh` 提高后消失，MPC 层再对转角限幅。
 
 **Q3. How did TEB's output connect with MPC in your system?**
 
 > TEB gives a time-stamped trajectory with pose, speed and curvature. The MPC uses it as a reference: it re-samples the reference at its own prediction steps, aligned by time, and adds the curvature as feedforward. TEB decides where to go around obstacles; MPC takes care of the vehicle model, the limits and the delay.
-> 【待你补全：轨迹传递方式、频率】
+> 本项目：TEB 以约 10 Hz 发布带时间的轨迹消息，MPC 节点以 20 Hz 运行，每个周期取最新一条轨迹，按预测步长重采样。
 
 **Q4. What is the difference between TEB and DWA?**
 

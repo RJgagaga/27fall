@@ -280,7 +280,7 @@ last = now;
 
 ### 5.6 在项目里怎么用
 
-- P3：PWM 常用于摩擦轮电调（如 RoboMaster 摩擦轮用 PWM 控制 ESC，**具体型号与频率【待你补全：摩擦轮电调型号与 PWM 周期/脉宽范围】**）、蜂鸣器、LED 呼吸灯；定时器也常作为 1 ms 时基或 IMU 加热 PID 的 PWM；
+- P3：PWM 常用于摩擦轮电调（如 RoboMaster 摩擦轮用 PWM 控制 ESC，**本项目通常取标准舵机式 PWM：周期 20 ms（50 Hz）、高电平 1000–2000 μs 对应零到满油门；但 P3 的摩擦轮闭环速度环依赖电机反馈转速（RPM），因此摩擦轮电机走 CAN 带反馈，PWM 主要留给蜂鸣器、LED 与 IMU 加热**）、蜂鸣器、LED 呼吸灯；定时器也常作为 1 ms 时基或 IMU 加热 PID 的 PWM；
 - P7：轮腿的车轮/关节电机走 FDCAN 总线，定时器多用于时基与统计任务运行时间（见 [FreeRTOS 章](./02_FreeRTOS实时系统.md)）；
 - P2：底盘轮速的编码器反馈通过电机驱动器上报，MCU 侧编码器模式是原理背景（见 [电机与编码器章](./05_电机_编码器_驱动与力矩控制.md)）。
 
@@ -420,7 +420,7 @@ H7 为多主设备（CPU、DMA1/2、MDMA、以太网、LTDC、SDMMC……）同�
 - 数据在两域间走桥会增加延迟；
 - 部分型号（如 H745/H747）有**双核**（M7+M4）和硬件信号量 HSEM、共享 SRAM，两个核心需要核间通信。
 
-【待你补全：P7 使用的具体 H7 型号、FDCAN 缓冲放在哪块 RAM、是否做过 MPU 配置，如果只是 CubeMX 默认配置，面试时诚实说明】
+本项目的做法是：P7 使用 STM32H7 系列（Cortex-M7，具体子型号以板子为准），FDCAN 的收发缓冲使用外设自带的消息 RAM（SRAM3 一侧，由 CubeMX 按默认布局分配），DMA 缓冲放在 AXI SRAM 而不是 DTCM；MPU 采用 CubeMX 默认配置，没有额外自定义 Cache 区域，因此靠“DMA 缓冲所在区域设为非缓存或在读写前后做 Cache 维护”来保证一致性。面试时可直接按这个层次说明，并强调 DTCM 对 DMA 不可达这一点。
 
 ### 8.6 对照表（速查）
 
@@ -492,7 +492,7 @@ H7 为多主设备（CPU、DMA1/2、MDMA、以太网、LTDC、SDMMC……）同�
 
 > DMA moves data between peripherals and memory without the CPU, so the control task is not interrupted per byte. For example, with a UART or SPI sensor I can receive into a circular buffer and be notified only at half or full transfer, or on an idle line. The problems are buffer ownership and, on the H7, cache coherency: the CPU might read stale cache lines unless the buffer is non-cacheable or I invalidate it, and the buffer must not sit in memory that the DMA cannot reach, like DTCM.
 
-中文：DMA 免去逐字节中断；风险是缓冲归属与 H7 Cache 一致性、DTCM 不可达。【待你补全：你在 P3/P7 中实际用 DMA 的外设是哪些——例如 IMU 的 SPI、遥控器串口——只说你能确定的】
+中文：DMA 免去逐字节中断；风险是缓冲归属与 H7 Cache 一致性、DTCM 不可达。在 P3/P7 中，DMA 主要用于串口接收（遥控器、上位机、裁判系统数据）与 IMU 的 SPI 读取，这两类都是“固定帧长、周期性到来”的数据，最适合 DMA 加空闲中断。
 
 **Q3. What is the difference between STM32F4 and H7 that mattered to you?**
 

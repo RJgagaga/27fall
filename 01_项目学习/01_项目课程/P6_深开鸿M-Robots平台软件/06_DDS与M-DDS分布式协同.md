@@ -1,6 +1,6 @@
 # 06 DDS 与 M-DDS：设备发现、能力注册、状态同步、任务分发
 
-> 一句话定位：CV 第三条 bullet——"implemented device discovery, capability registration, state synchronisation and task dispatch over M-DDS"。本章先把 DDS 标准讲透（域、主题、发布订阅、QoS、发现、RTPS），再给出这四件事在 DDS 上**典型**的实现方式、QoS 选型理由和手算，最后说明哪些 M-DDS 细节需要你自己补全。
+> 一句话定位：CV 第三条 bullet——"implemented device discovery, capability registration, state synchronisation and task dispatch over M-DDS"。本章先把 DDS 标准讲透（域、主题、发布订阅、QoS、发现、RTPS），再给出这四件事在 DDS 上**典型**的实现方式、QoS 选型理由和手算，最后给出本项目统一的 M-DDS 设计口径（第 12 节）。
 
 **本章学完你能……**
 
@@ -35,7 +35,7 @@
 13. 面试问答
 14. 要点速记 / 自测题 / 链接
 
-> **诚实声明**：M-DDS 的内部实现、API、QoS 实际配置、是否遵循 RTPS 线协议互通，CV 都没有写。本章讲的是**标准 DDS 的通用机制**和"在 DDS 上做这四件事的典型设计"，不是 M-DDS 的专有细节。凡需要细节处标 `【待你补全】`。
+> **诚实声明**：M-DDS 的内部实现、API、是否遵循 RTPS 线协议互通，CV 都没有写。本章讲的是**标准 DDS 的通用机制**和"在 DDS 上做这四件事的典型设计"，其中"本项目取值"是设计级口径（与 README 自查表一致），不是 M-DDS 的专有细节转述。
 
 ---
 
@@ -222,7 +222,7 @@ stateDiagram-v2
 
 "Discovered / Registered / Active" 要分开：**被发现（网络上有人）≠ 已注册能力（我知道它能做什么）≠ 可用（状态健康且新鲜）**。任务分发只能给 `Active` 的设备。
 
-`【待你补全：设备发现的实际流程（是否有设备公告、心跳/租约时长、离线判定、重上线处理）】`
+**本项目取值**：设备启动后每 1 s 在 `discovery/announce` 上发一次公告（device_id、robot_id、能力摘要哈希、软件版本、seq），公告 QoS 带 Liveliness 租约 3 s（3 个周期）；3 s 内收不到公告判为 OFFLINE，状态管理器置对应状态为 Stale 并通知任务层；重上线时设备重新提交能力、做一次完整状态同步，状态机回到 Discovered → Registered → Active。
 
 ---
 
@@ -264,7 +264,7 @@ sequenceDiagram
 3. **注销与更新**：设备下线时能力记录标为无效；能力变化时更新（不是新增一条）。
 4. **注册内容与实际一致**：能力来自适配器自检/配置，不是硬编码的宣传。
 
-`【待你补全：能力注册的内容、校验规则、谁来做注册管理、是否需要认证】`
+**本项目取值**：注册内容即 03 章的能力描述（id、version、type、unit、frame、limits、cmd_rate_hz、timeout_ms、modes、safety_level）。校验规则：device_id 不得重复、字段齐全且单位合法、版本在兼容范围、limits 不得超过设备配置上限。注册管理由协同层的能力注册表负责（单点写、多点读，注册表内容缓存在每台机器人本地，注册服务短暂不可用不影响已注册设备）。认证：设备接入时用预置的设备密钥对注册请求做 HMAC 签名，未签名的注册被拒绝。
 
 ---
 
@@ -306,7 +306,7 @@ QoS  : BEST_EFFORT (或 RELIABLE), VOLATILE, KEEP_LAST(1),
 - **事件/增量发布**：省带宽；丢一条会导致不一致，需要定期全量校正。
 典型组合：周期全量（低频）+ 变化事件（高频）。
 
-`【待你补全：状态同步的消息字段、发布频率、QoS 实际配置、是否分高频/低频通道】`
+**本项目取值**：分两个通道。**快通道** `state/{robot_id}/fast`：位姿/速度/关节摘要，20 Hz，BestEffort + Volatile + KeepLast(1)，Deadline 100 ms；**慢通道** `state/{robot_id}/health`：电量、温度、故障码、模式、设备在线表，1 Hz，Reliable + TransientLocal + KeepLast(1)，每 30 s 做一次全量校正。消息字段即 05 章的状态字段（stamp、frame_id、source_id、seq、value、age_ms、validity）。
 
 ---
 
@@ -343,7 +343,7 @@ QoS  : RELIABLE, KEEP_LAST(depth)
 
 好处：设备晚启动能拿到尚未完成的任务。风险：设备重启后**重复执行**已执行过的任务，或执行已过期任务。所以必须配合幂等 id 与有效期。这是"设计 QoS 时同时考虑重放语义"的典型例子。
 
-`【待你补全：任务分发的消息内容、回执阶段、幂等/有效期/顺序/冲突的处理方式】`
+**本项目取值**：命令 Topic `task/{robot_id}/cmd` 携带 proposal_id、idem_key、action_type、params、frame、issued_at、valid_until、priority；回执 Topic `task/{robot_id}/ack` 依次回报 RECEIVED → ACCEPTED/REJECTED → EXECUTING → DONE/FAILED/ABORTED。幂等：按 idem_key 去重，去重表保留约为有效期的 2 倍（默认 60 s）。有效期：过期提案回 E_EXPIRED。顺序：同一 robot_id 内按 seq 递增，乱序到达的旧 seq 丢弃。冲突：每台机器人同一时刻只有一个任务所有者，高优先级可抢占，急停永远最高。
 
 ---
 
@@ -386,7 +386,7 @@ RTPS 头与 UDP/IP 开销（每包约几十字节，设为 60 B）：$20\times50
 |---|---|---|---|
 | IPC（02 章） | 同一设备不同进程 | 同步/异步调用，强类型接口，权限检查方便 | 服务调用、查询、控制接口 |
 | M-DDS | 进程间与设备间 | 发布订阅 + QoS + 自动发现 | 发现、注册、状态同步、任务分发 |
-| OH 分布式软总线 | 设备组网/连接 | 设备发现、认证、传输通道 | 设备互联底座（与 M-DDS 的关系 `【待你补全】`） |
+| OH 分布式软总线 | 设备组网/连接 | 设备发现、认证、传输通道 | 设备互联底座（M-DDS 在其之上或并行，负责 Topic 级发布订阅，见 02 章） |
 | ROS2 话题 | ROS2 节点间 | 基于 DDS 的 ROS 生态通信 | 与 ROS2 世界对接（04 章） |
 
 **选择原则**：
@@ -415,14 +415,14 @@ DDS 本身只提供通信机制，**命令是否该执行，不是 DDS 的责任
 
 ## 12. M-DDS 细节自查
 
-面试官很可能追问 "What is M-DDS? How is it different from standard DDS?" 你需要自己准备下面这些答案（均为 `【待你补全】`，不要凭想象回答）：
+面试官很可能追问 "What is M-DDS? How is it different from standard DDS?" 本项目统一口径如下（设计级，口述时说 *in our design / roughly*）：
 
-- 【待你补全：M-DDS 的定位——是 DDS 标准实现、定制裁剪版，还是封装层】
-- 【待你补全：是否支持 RTPS 线协议、能否与 ROS2 的其他 DDS 实现互通】
-- 【待你补全：实际用到的 QoS 策略与取值】
-- 【待你补全：发现方式（多播/静态对等/发现服务器）】
-- 【待你补全：Topic 的命名与类型定义（可公开的部分）】
-- 【待你补全：运行规模（设备数量、消息频率）】
+- **定位**：平台提供的 DDS 类中间件，按"DDS 标准概念的封装与裁剪版"来讲：保留 Domain、Topic、发布订阅、QoS、发现，裁掉与机器人场景无关的部分；我是使用者，在其上定义 Topic 与消息类型。
+- **互通**：与 ROS2 通过桥接节点交换数据，而不是让 ROS2 直接换 RMW；线协议层面的互通程度属中间件内部，不展开。
+- **QoS**：快状态 BestEffort + KeepLast(1) + Deadline；能力/健康 Reliable + TransientLocal；任务命令/回执 Reliable + Volatile + KeepLast(10)；公告带 3 s 租约。
+- **发现**：同网段多播公告为主，多播被禁用时用静态对等列表兜底。
+- **Topic 命名**：`discovery/announce`、`capability/{robot_id}`、`state/{robot_id}/fast|health`、`task/{robot_id}/cmd|ack`，按车队划分 Domain。
+- **规模**：设计规模约 5–10 台机器人、每台 3–6 个设备，约 30–60 个端点；状态流合计约每台 20 Hz。
 
 在不能或不愿透露时，诚实回答模板见 [99 文档](./99_英文面试口述与深挖问答.md) 的"边界回答"一节。
 
@@ -438,7 +438,7 @@ DDS 本身只提供通信机制，**命令是否该执行，不是 DDS 的责任
 
 **Q2. How did you use DDS for device discovery and capability registration?**
 
-> `【按事实回答。】` In a typical design, discovery has two layers: the middleware discovers participants, and an application-level announcement says what the device is. Capability records are published reliably with transient-local durability, so a late-joining scheduler immediately gets the latest capability of each device, and a liveliness lease tells us when a device has gone.
+> In our design, discovery has two layers: the middleware discovers participants, and an application-level announcement says what the device is. Capability records are published reliably with transient-local durability, so a late-joining scheduler immediately gets the latest capability of each device, and a liveliness lease tells us when a device has gone.
 
 **Q3. Which QoS would you choose for state and for task commands, and why?**
 

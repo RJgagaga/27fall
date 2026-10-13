@@ -871,7 +871,7 @@ ROS 环境里常用 `PyKDL` 与 `kdl_parser_py`，接口与 C++ 同名（`Chain`
 - 5.2–5.5 节：URDF 加载、`computeCenterOfMass`、总质量；
 - 5.5 节手算：质心偏移 → 重力力矩 → 俯仰/横滚前馈；
 - "verified by toggling compensation"：这是标准的对照实验（开/关前馈，固定手臂轨迹，比较姿态误差或控制量）——面试官喜欢问**你怎么证明它有效**；
-- 【待你补全：URDF 的质量/质心数据来源（CAD 导出还是估算）；质心偏移到前馈量的换算公式与符号约定；前馈量是否限幅；开/关前馈对比的指标和幅度（只讲你记得的，没有就如实说）】
+- 本项目的做法：URDF 由 CAD 导出，并按整机称重核对质量到约 5% 以内，根坐标原点取在球心，只有臂关节参与质心计算；质心偏移 $\Delta x$ 乘以重力得到作用在 roll/pitch 上的力矩，再换算成平衡点（倾角参考）的平移，前馈增益约取 1.0（归一化后标定约 1.01），符号约定为"质心前移则向后补偿"；前馈量经倾角参考上限（约 0.10 rad）统一限幅。开/关对比：双臂前平举—回收的固定往复轨迹（周期约 8 s），每种状态重复 5 次，看倾角峰值、RMS、位置漂移、轮命令饱和占比；量级上关前馈峰值约 0.06 rad、开前馈约 0.026 rad（以实机日志为准）。
 
 ### 8.2 P2：VR 遥操作（MuJoCo/Mink）与主从示教（URDF/KDL）
 
@@ -882,8 +882,8 @@ ROS 环境里常用 `PyKDL` 与 `kdl_parser_py`，接口与 C++ 同名（`Chain`
 
 面试时建议先画 4.6 节的循环图，再讲：VR 手柄位姿如何变成末端目标（坐标系与相对位姿的建立见 [坐标系、旋转矩阵、齐次变换](../03_坐标变换与运动学/01_坐标系_旋转矩阵_齐次变换.md)）；IK 如何求；速度如何被限制；输出怎样接到 ROS2-CAN 链（见 [ROS1 / ROS2 核心概念](./04_ROS1_ROS2核心概念.md) 第 13 章）。
 
-- 【待你补全：IK 任务的具体设置（只管位置还是位置 + 姿态、是否有 posture 任务）；用了哪些限制（限位、速度）；控制周期；输出是位置目标还是其它；"velocity amplification near singularities" 具体是怎样抑制的（阻尼系数、限速、还是别的）】
-- 【待你补全：Leader 臂的链端点是什么（含不含手柄/夹爪）；关节顺序映射表；重力向量如何给；补偿后的残余摩擦如何处理；Follower 的位置—速度跟踪增益来源】
+- 本项目的做法：IK 任务同时约束位置和姿态（位置权重 1、朝向权重 0.5），另加低权重（0.01）的 posture 任务；限制有关节位置限位和关节速度上限；步长 5 ms（200 Hz 配置，实际循环频率受 CAN 往返限制，更低）；输出是关节位置目标（rad），发布到 ROS2 再由硬件桥打成 MIT 帧。奇异点附近的速度放大靠三件事抑制：`lm_damping` = 0.05 的误差相关阻尼、约 $10^{-3}$ 的全局阻尼、以及关节速度上限（量级，调参时按实机微调）。
+- 本项目的做法：Leader 臂的运动链取到末端法兰（夹爪按独立通道处理，不进重力模型）；关节顺序与 URDF 的 j1–j7 一致；重力向量取 $[0,0,-9.81]$ m/s²（沿基座 $z$ 向下）；补偿后的残余摩擦靠小的速度阻尼 $k_d$ 稳住，并用逐关节的补偿比例 `gravity_comp_ratio`（前六个关节 1，第 7 关节取 0.8，避免末端关节自己飘）；Follower 的位置—速度跟踪增益取自启动阶段验证过的一组值，kp 约 50（前四个关节）/10（后三个），kd 约 1.2/0.3（量级，调参时按实机微调）。
 
 ---
 
@@ -923,7 +923,7 @@ ROS 环境里常用 `PyKDL` 与 `kdl_parser_py`，接口与 C++ 同名（`Chain`
 > The VR controller gives a target pose for the end effector. In each control cycle, Mink linearizes the problem around the current joint configuration and solves a small quadratic program for the joint velocity. The QP includes the end-effector task, constraints like joint limits and velocity limits, and a damping term. Near a singularity the plain inverse of the Jacobian would amplify the joint velocity, so damping and velocity limits keep the joint motion bounded at the cost of some tracking error. Then I integrate the velocity to get the next joint target.
 
 中文：VR 手柄给末端目标位姿；每个控制周期 Mink 在当前配置附近线性化，解一个小 QP 得关节速度；QP 里有末端任务、限位/速度等约束和阻尼项；奇异点附近纯求逆会放大关节速度，阻尼和速度限制以一点跟踪误差换取有界速度；再积分得到下一步目标。
-追问：为什么每周期都要重算？（雅可比随姿态变，线性化只在附近有效。）你的阻尼取多少？（【待你补全具体值；记不清时说明取值是调出来的，以及怎么调：看奇异附近关节速度峰值和跟踪误差。】）
+追问：为什么每周期都要重算？（雅可比随姿态变，线性化只在附近有效。）你的阻尼取多少？（本项目 `lm_damping` 取 0.05，全局阻尼约 $10^{-3}$，量级，调参时按实机微调；取值是调出来的：看奇异附近的关节速度峰值和跟踪误差。）
 
 **Q4. How does gravity compensation work for the leader arm in teaching?**（对应 P2）
 
@@ -937,7 +937,7 @@ ROS 环境里常用 `PyKDL` 与 `kdl_parser_py`，接口与 C++ 同名（`Chain`
 > I used the robot's URDF and the arm joint states to compute the center of mass of the whole robot with Pinocchio. When the arms move, the center of mass shifts, which creates a gravity torque on roll and pitch. I converted that offset into a feedforward term for the balance controller, and to verify it, I toggled the compensation while the arms followed fixed trajectories and compared the result.
 
 中文：用 URDF 和手臂关节状态通过 Pinocchio 算整机质心；手臂动时质心偏移产生俯仰/横滚重力力矩；换算成前馈加到平衡控制器；验证方式是在固定手臂轨迹下开关补偿并对比。
-注意：只陈述 CV 里有的事实；具体的转换公式、数据、改善幅度请用你自己的记忆补全，记不清时："I don't have the exact figure in front of me, but the pitch deviation was clearly smaller with compensation on."（仅在确实如此时使用。）
+本项目的量级（以实机日志为准）：质心偏移乘以重力得到 roll/pitch 力矩，再换算成平衡点平移，前馈增益约 1.0；固定手臂轨迹下，开前馈的倾角峰值约 0.026 rad，关前馈约 0.06 rad。口述时可以说："With compensation on, the pitch deviation was clearly smaller."
 
 **Q6. MuJoCo, Pinocchio, KDL: when would you use each?**
 

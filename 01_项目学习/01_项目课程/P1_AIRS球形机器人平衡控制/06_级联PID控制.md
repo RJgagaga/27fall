@@ -151,7 +151,7 @@ $$\theta_{\text{ref}}=\operatorname{clip}\Big(K_{px}\,(x_t-x)+K_{dx}\,(v_t-v),\ 
 - 积分：外环通常很少加或加得很小（里程本身漂移，积分更难办）；
 - **坐标系：** 误差要放在机体系下（把世界系的位置、目标都旋转到机体方向后再相减），前后通道才对应 pitch、左右通道才对应 roll。
 
-**关于 cmd_vel 的典型处理（学习笔记所记快照结构，细节请核对）：** 速度命令 $v_{\text{cmd}}$ 先经平滑得到目标速度 $v_t$（如 $v_t\leftarrow v_t+\kappa(v_{\text{cmd}}-v_t)$），再把 $v_t$ 积分成"目标位置" $x_t\leftarrow x_t+v_t\,\Delta t_{\text{cmd}}$。这样外环既有速度目标也有一直向前移动的位置目标。注意：积分用的 $\Delta t_{\text{cmd}}$ 若与消息实际到达频率不符，目标位置会偏快或偏慢。
+**关于 cmd_vel 的典型处理（学习笔记所记快照结构，本项目按此理解）：** 速度命令 $v_{\text{cmd}}$ 先经平滑得到目标速度 $v_t$（如 $v_t\leftarrow v_t+\kappa(v_{\text{cmd}}-v_t)$），再把 $v_t$ 积分成"目标位置" $x_t\leftarrow x_t+v_t\,\Delta t_{\text{cmd}}$。这样外环既有速度目标也有一直向前移动的位置目标。注意：积分用的 $\Delta t_{\text{cmd}}$ 若与消息实际到达频率不符，目标位置会偏快或偏慢。
 
 **手算（教学数值，$K_{px}=0.08$ rad/m，$K_{dx}=0.20$ rad/(m/s)，$\theta_{\max}=0.10$）：**
 
@@ -221,7 +221,7 @@ $$u=K_{p\theta}\,(\theta_{\text{ref}}-\theta)+K_{i\theta}\!\int(\theta_{\text{re
 | 力矩模式 | 球上的目标力矩 $T$ | $\boldsymbol\tau_w=J^{-\mathsf T}\mathbf T$，命令电机转矩/电流 |
 | 速度模式 | 球的目标角速度 $\omega$ | $\mathbf s=J\boldsymbol\omega$，命令电机转速；电机内环（速度环）把速度变成力矩 |
 
-**P1 的 CV 说"outputs allocated to three wheels via kinematics"，学习笔记所记快照最终写入电机命令的是轮速字段 `v_des`**（单位 rad/s，需你核对），即速度模式。此时变量叫 `tau_roll` 并不代表它是 N·m，而是"沿用了力矩层的叫法、被当作带比例系数的速度量纲命令"。
+**P1 的 CV 说"outputs allocated to three wheels via kinematics"，学习笔记所记快照最终写入电机命令的是轮速字段 `v_des`**（单位 rad/s），即速度模式。此时变量叫 `tau_roll` 并不代表它是 N·m，而是"沿用了力矩层的叫法、被当作带比例系数的速度量纲命令"。
 
 ### 7.2 困惑二："力矩怎么变成球角速度？每个周期要不要算 $\omega_{\text{new}}=\omega_{\text{old}}+\alpha\Delta t$？"
 
@@ -238,7 +238,7 @@ $$u=K_{p\theta}\,(\theta_{\text{ref}}-\theta)+K_{i\theta}\!\int(\theta_{\text{re
 
 这类系数只是**量纲/幅度的整定因子**（从 PID 输出量纲到下游命令量纲的比例），名字提示"torque-to-velocity"，但它**不是物理换算**：真要从力矩换到速度，需要转动惯量与时间（$\Delta\omega=\tau\Delta t/I$），一个常数代替不了。实务上它的取值来自调试（观察小输入下的响应、峰值、振荡、限幅），而不是公式。
 
-> **面试要点：** 如果被问 "how did you choose that scaling?"，诚实答案是 "it's an empirical gain that sets the loop gain between the PID output and the wheel command; I set it during tuning together with the PID gains"，具体数值与依据请补充到自查表。（学习笔记还提到快照中反馈路径与前馈路径经过该系数的次数不同，这是一个值得你核对的实现细节。）
+> **面试要点：** 如果被问 "how did you choose that scaling?"，诚实答案是 "it's an empirical gain that sets the loop gain between the PID output and the wheel command; I set it during tuning together with the PID gains"，本项目取值：该系数是整定量，与 PID 增益一起在整定时确定，数值汇总在 README 自查表。（学习笔记还提到快照中反馈路径与前馈路径经过该系数的次数不同，这是一个读码时发现的实现细节，面试里只说"它是整定量"即可。）
 
 ---
 

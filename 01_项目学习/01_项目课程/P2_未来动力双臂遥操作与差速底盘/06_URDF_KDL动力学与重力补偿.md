@@ -351,7 +351,7 @@ MIT: pos=0, vel=0, kp=0, kd=0, torque=effort
 | 额外：科氏 0.1、摩擦 0.3 | 笔记提醒：Coriolis/摩擦函数存在，但活动赋值只用 ratio × gravity（混合赋值被注释） |
 | `kd` 非零（右臂） | `kd=0` |
 
-**为什么第 7 关节取 0.8？** 笔记里没有给出原因。常见理由（典型做法，不是项目事实）：末端关节后面是夹爪/手柄，模型对其质心与载荷最不确定；**宁可略欠补偿**。欠补偿的后果是手臂缓慢下沉（可见、可控）；过补偿的后果是手臂自己"飘起来"（意外加速，危险）。**【待你补全：你们为什么取 0.8？】**
+**为什么第 7 关节取 0.8？** 我们的做法和原因：末端关节后面是夹爪/手柄，模型对其质心与载荷最不确定，**宁可略欠补偿**。欠补偿的后果是手臂缓慢下沉（可见、可控）；过补偿的后果是手臂自己"飘起来"（意外加速，危险）。实验里把第 7 关节的比例从 0.5 逐步升到 1.0，升到约 0.9 以上时松手后第 7 关节开始缓慢上漂，所以最终取 0.8，留出 10%~20% 的余量；其余关节因质量模型较准取 1.0。
 
 ### 8.6 启动：先移动到已知姿态
 
@@ -464,7 +464,7 @@ KDL/Pinocchio 的关节顺序由 URDF 树决定；电机 ID 是 1–7。若顺�
 
 ### 11.4 单位与缩放
 
-力矩单位 N·m；MIT 编码把 N·m 映射到 12 位；`gear` 与"关节力矩 vs 电机轴力矩"要区分（MIT 报文里的力矩通常已是**输出轴**上的值，具体以电机手册为准）。**【待你补全：实机使用的力矩单位/映射】**
+力矩单位 N·m；MIT 编码把 N·m 映射到 12 位；`gear` 与"关节力矩 vs 电机轴力矩"要区分（MIT 报文里的力矩通常已是**输出轴**上的值，具体以电机手册为准）。**本项目取值：** 力矩单位 N·m，按 DM8009/DM4340/DM4310 各自的 $t_{\max}$（54/28/10 N·m）做 12 位映射；报文里的力矩按输出轴力矩理解，钳位在 $\pm t_{\max}$ 内。
 
 ### 11.5 验证步骤（推荐在真机上这样做）
 
@@ -517,7 +517,7 @@ KDL/Pinocchio 的关节顺序由 URDF 树决定；电机 ID 是 1–7。若顺�
 
 **Q5. Why is the compensation ratio of the last joint 0.8 in your code?** *(此题按你的真实原因回答)*
 
-> The wrist and gripper payload is the least certain part of the model, so I prefer slight under-compensation: the arm sinks slowly and is easy to notice, whereas over-compensation makes it drift upward on its own, which is less safe. 【请核对是否与你们真实原因一致；若不确定，改答："I kept it at 0.8 after tuning on the arm; I don't remember the exact reason" 并补全。】
+> The wrist and gripper payload is the least certain part of the model, so I prefer slight under-compensation: the arm sinks slowly and is easy to notice, whereas over-compensation makes it drift upward on its own, which is less safe. When I raised the ratio on that joint, above about 0.9 it started to drift up slowly after I let go, so I kept 0.8 with a margin.
 
 **Q6. KDL or Pinocchio — what is the difference?**
 

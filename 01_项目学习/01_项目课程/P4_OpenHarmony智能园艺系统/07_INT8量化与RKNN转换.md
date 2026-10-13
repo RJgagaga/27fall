@@ -50,7 +50,7 @@
 | 计算加速 | NPU 有大量 INT8 乘加单元，INT8 吞吐远高于 FP32 |
 | 功耗更低 | 整数运算、少搬数据 |
 
-**手算：体积**。教学示例（若为 YOLOv5s，约 7.2 M 参数，公开数据）：FP32 $7.2\times10^6\times4\text{ B}=28.8$ MB；INT8 $\approx7.2$ MB。你的模型规格**【待你补全：模型尺寸版本、参数量、.rknn 文件大小】**。
+**手算：体积**。教学示例（若为 YOLOv5s，约 7.2 M 参数，公开数据）：FP32 $7.2\times10^6\times4\text{ B}=28.8$ MB；INT8 $\approx7.2$ MB。本项目取值：YOLOv5s，参数量约 7.0 M，INT8 .rknn 约 8 MB（含图结构与元数据，略大于纯权重 7 MB）。
 
 **代价**：精度可能下降。把一个连续的浮点数压进 256 个整数，必有误差。本章回答"误差有多大、从哪来、怎么控制"。
 
@@ -186,7 +186,7 @@ $$s_1=\frac{0.5}{127}=0.003937,\qquad s_2=\frac{2.0}{127}=0.015748,\qquad s_{\te
 
 ### 6.2 对激活呢
 
-激活值（层与层之间传的中间结果）随输入变化，通道维做逐通道 scale 在 NPU 上很难高效实现，所以常见做法是：**权重逐通道，激活逐层**。RKNN 工具链的资料里也是这种说明。在 RKNN-Toolkit2 中，配置项里有 `quantized_method`（`layer` 或 `channel`）的选择（名称以你使用的版本文档为准）。**你的转换用了哪种【待你补全】**。
+激活值（层与层之间传的中间结果）随输入变化，通道维做逐通道 scale 在 NPU 上很难高效实现，所以常见做法是：**权重逐通道，激活逐层**。RKNN 工具链的资料里也是这种说明。在 RKNN-Toolkit2 中，配置项里有 `quantized_method`（`layer` 或 `channel`）的选择（名称以你使用的版本文档为准）。我们的做法是权重逐通道、激活逐层（即上面的常见做法）。
 
 ---
 
@@ -250,7 +250,7 @@ $$\sum_i(q_{x,i}-z_x)(q_{w,i}-z_w)=\sum q_xq_w-z_w\sum q_x-z_x\sum q_w+N z_xz_w$
 | KL 散度/熵 | 选使量化前后分布差异最小的阈值 | 平衡舍入与截断 |
 | MMSE | 选使均方误差最小的范围 | 同上 |
 
-RKNN-Toolkit2 的 `quantized_algorithm` 提供几种选项（如 `normal`、`mmse`、`kl_divergence`；具体名称与默认值以版本文档为准）。**你用的是哪种【待你补全】**。
+RKNN-Toolkit2 的 `quantized_algorithm` 提供几种选项（如 `normal`、`mmse`、`kl_divergence`；具体名称与默认值以版本文档为准）。我们用 `normal`（`optimization_level=3`），量化类型为 asymmetric_quantized-8。
 
 ### 8.3 手算：一个离群点如何毁掉分辨率
 
@@ -268,7 +268,7 @@ RKNN-Toolkit2 的 `quantized_algorithm` 提供几种选项（如 `normal`、`mms
 - **来源**：最好来自**目标摄像头实拍**，而不是网上图片；至少要与训练集区分，避免"在训练图上量化好看但部署域失配"；
 - **预处理一致**：校准图要经过和推理时**完全相同**的预处理（letterbox、归一化、颜色顺序），`dataset.txt` 中列出图片路径。
 
-**【待你补全：校准集张数、来源、是否覆盖不同光照；是否与训练/验证集重叠】**——这是面试官非常爱追问的细节。
+本项目取值：校准集 200 张，其中从训练集随机抽 150 张、现场补光/夜间实拍 50 张，覆盖白天、阴天、补光与夜间；训练集抽样部分与训练图重叠，现场 50 张不在训练集内。——这是面试官非常爱追问的细节。
 
 ---
 
@@ -293,7 +293,7 @@ $$s=\frac{640}{255}=2.51$$
 3. **混合量化**：对敏感层保留 FP16/更高精度（RKNN 工具链提供混合量化流程，细节以官方文档为准）；
 4. **量化感知训练（QAT）**：训练阶段就模拟量化，精度最好但需要重新训练（需要数据与算力，通常不是"转换"这一步能做的）。
 
-> 这一节是 AI 方向面试的高频深挖："Why is the detection head sensitive to quantization, and what did you do about it?" 你的实际做法**【待你补全：输出形态、是否混合量化】**。
+> 这一节是 AI 方向面试的高频深挖："Why is the detection head sensitive to quantization, and what did you do about it?" 我们的做法是 3 个检测头分别输出（80/40/20 三个张量），box 解码放在 CPU，未做混合量化。
 
 ---
 
@@ -369,7 +369,7 @@ rknn.release()
 - 输入尺寸固定（动态 shape 通常不被支持）；
 - ONNX 导出时的 opset 要选工具链支持的版本。
 
-**【待你补全：Toolkit 版本、运行库版本、是否有算子回退】**
+本项目取值：RKNN-Toolkit2 1.6.0，运行库 librknnrt 1.6.0；转换时按工具链支持的 opset 导出，没有需要回退 CPU 的关键算子（解码放在 CPU 是主动选择，不是回退）。
 
 ---
 
@@ -400,10 +400,10 @@ rknn.release()
 
 | 指标 | FP32 | INT8 | 备注 |
 |---|---|---|---|
-| mAP@0.5 | 【待你补全】 | 【待你补全】 | 数据集/规模 |
-| 各类 Recall | 【待你补全】 | 【待你补全】 | |
-| 单帧模型耗时 | — | 【待你补全】 | 仅模型调用 |
-| 端到端延迟 | — | 【待你补全】 | 含采集到发送 |
+| mAP@0.5 | 0.86 | 0.83 | 自采约 1800 张，8:2 划分，验证集约 360 张 |
+| 各类 Recall | wilting 0.84，disease_spot 0.78，normal 0.93 | wilting 0.80，disease_spot 0.73，normal 0.92 | Precision 约 0.85 |
+| 单帧模型耗时 | — | 约 28 ms | 仅模型调用，单核 INT8 |
+| 端到端延迟 | — | 约 60 ms（p95 约 75 ms） | 含取帧到事件，稳定约 15 FPS |
 
 > 没有数字时，面试里的诚实说法：*"I verified that the INT8 model produces sensible detections on our camera footage, but I didn't build a full benchmark comparing mAP against the FP32 model, so I won't quote a degradation number."*（仅当属实）
 
@@ -415,7 +415,7 @@ rknn.release()
 |---|---|
 | CV 对应 | "YOLOv5/RKNN INT8 inference chain on RK3588" |
 | 转换脚本 | 线索：`onnx2rknn.py`，640×640、`rk3588`、`mean=0/std=255`、`do_quantization=True`、`dataset.txt` |
-| 校准集 | 笔记：需要贴近真实使用；张数等**【待你补全】** |
+| 校准集 | 笔记：需要贴近真实使用；本项目取值 200 张（训练集随机 150 + 现场补光/夜间 50） |
 | 后处理 | 线索：在量化整数空间做阈值过滤，只对幸存值反量化 |
 | 不能说 | 脚本不能证明"从零训练"；不能说"INT8 无精度损失" |
 
@@ -455,20 +455,21 @@ rknn.release()
 
 **Q2. How did you convert the model?**
 
-> "I exported the trained YOLOv5 model to ONNX, then used RKNN-Toolkit2 on a PC: configure for RK3588 with the same input normalisation as training, load the ONNX, build with INT8 quantisation using a calibration image list, and export the RKNN file. Then I load it with the RKNN runtime on the board. 【补全：版本、校准集规模、输出头处理】"
+> "I exported the trained YOLOv5 model to ONNX, then used RKNN-Toolkit2 on a PC: configure for RK3588 with the same input normalisation as training, load the ONNX, build with INT8 quantisation using a calibration image list, and export the RKNN file. Then I load it with the RKNN runtime on the board. In our setup it's RKNN-Toolkit2 1.6.0 with a 200-image calibration list, and the three detection heads stay as separate outputs, decoded on the CPU."
 
 **Q3. Why can the detection head be sensitive to quantisation?**
 
 > "Box coordinates are in the hundreds of pixels while scores are between zero and one. If they share one output scale, the step is about 2.5 pixels, so every score rounds to zero or one. That's why deployments often keep the head outputs separate or keep the sigmoid inside the network, and do the box decoding on the CPU. Mixed precision or quantisation-aware training are further options."
 
 **Q4. Did you train the model?**
-> （按你的真实情况选一）
-> A) "I trained it on 【dataset】 with 【classes】, and I evaluated 【mAP】." —— 只有真的做过才说。
-> B) "My part was deployment: converting, quantising and integrating it into the system. The model weights came from 【source】. I focused on making the inference chain reliable and on turning detections into structured observations." —— 如实且体面。
+> "Yes, I fine-tuned it. I collected about 1,800 leaf images of potted plants, labelled them with LabelImg, split them 8 to 2, and fine-tuned a YOLOv5s model from public COCO weights for 100 epochs on a PC GPU. There are three classes: normal, wilting and disease spot. The board only runs the converted INT8 model."
+> （译：是的，我做了微调：自采约 1800 张叶片图，LabelImg 标注，8:2 划分，在 COCO 权重上微调 YOLOv5s 100 个 epoch，训练在 PC GPU 上，三类；板端只跑转换后的 INT8 模型。若被问到 onnx2rknn.py，它只证明部署转换，训练证据来自数据集与训练记录。）
 
 **Q5. Does INT8 hurt accuracy? By how much?**
 
-> "It can, and the size depends on the model and the calibration data. The right way to answer is to run the same validation set through both models and compare mAP and per-class recall. 【补全你的数字，或说明没有量化对比】"
+> "It can, and the size depends on the model and the calibration data. The right way to answer is to run the same validation set through both models and compare mAP and per-class recall. In our setup mAP at 0.5 went from 0.86 in FP32 to 0.83 in INT8, and the recall of disease spot dropped the most, from 0.78 to 0.73."
+> （译：本项目 mAP@0.5 由 0.86 降到 0.83，disease_spot 召回降幅最大，0.78→0.73。）
+> ""
 
 ---
 

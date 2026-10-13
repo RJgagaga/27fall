@@ -81,7 +81,7 @@ UART 允许总误差约 ±2%~±3%（10 位累计误差小于半位，即 5%，�
 
 ### 1.6 在项目里怎么用
 
-P3：典型 RoboMaster 控制板有多个串口——遥控器接收机、上位机/视觉主机（USB 或串口）、裁判系统串口。这些协议的帧头、长度、CRC 都要在固件里解析。【待你补全：P3 里实际使用的串口外设（遥控器/视觉/裁判）、波特率、协议格式】。P4：Hi3861 与 RK3588/PC 之间可能用串口或 Wi-Fi/TCP 通信，见 [平台基础章](./06_OpenHarmony_Hi3861_RK3588平台基础.md)。
+P3：典型 RoboMaster 控制板有多个串口——遥控器接收机、上位机/视觉主机（USB 或串口）、裁判系统串口。这些协议的帧头、长度、CRC 都要在固件里解析。本项目通常取：遥控器接收机用 DBUS（100 kbps、8E1、反相，DMA 接收固定 18 字节帧）；视觉主机用串口或 USB 虚拟串口，波特率 115200–921600，自定义帧（帧头、长度、数据、CRC16）；裁判系统串口 115200，按官方帧格式解析。。P4：Hi3861 与 RK3588/PC 之间可能用串口或 Wi-Fi/TCP 通信，见 [平台基础章](./06_OpenHarmony_Hi3861_RK3588平台基础.md)。
 
 ### 1.7 常见错误
 
@@ -214,7 +214,7 @@ STM32 上常用 LwIP 协议栈（H7 有以太网 MAC + PHY）；Hi3861 用 Wi-Fi
 
 ### 4.6 在项目里怎么用
 
-P4：设备端（Hi3861）与服务器/边缘端的通信；P6：M-DDS 在 UDP/组播之上做发现与可靠性（见 [DDS 与分布式通信](../09_机器人软件/05_DDS与分布式通信.md)）；P2：VR 控制器数据到机器人控制端的链路。具体协议选择【待你补全：P2/P4 里各链路实际用的传输协议（TCP/UDP/WebSocket/MQTT/ROS2 DDS）】。
+P4：设备端（Hi3861）与服务器/边缘端的通信；P6：M-DDS 在 UDP/组播之上做发现与可靠性（见 [DDS 与分布式通信](../09_机器人软件/05_DDS与分布式通信.md)）；P2：VR 控制器数据到机器人控制端的链路。具体协议选择：P2 的 VR 数据到控制端用网络（UDP/TCP 均可，低延迟优先时用 UDP），机器人内部走 ROS2 DDS；P4 设备端与服务器用 TCP（含 WebSocket 到网页推送）。
 
 ---
 
@@ -500,7 +500,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *h, uint16_t size) // size = 
 
 > A sum can't detect swapped bytes or errors that cancel out. A CRC divides the data, as a polynomial, by a generator polynomial. It detects all burst errors up to its length and almost all random errors with probability about one minus two to the minus n. It's cheap in hardware or with a lookup table. I check the header CRC first so a corrupted length field can't break framing.
 
-【待你补全：你在项目里是否自己设计/解析过串口或网络协议（如遥控/视觉/上位机）；如果没有，用"I used an existing frame format and implemented the parser"之类的真实说法】
+结合项目：P3 里遥控器、裁判系统是现成帧格式，我们实现了解析与校验；与视觉主机的帧格式按“帧头+长度+数据+CRC”自己约定。可以说：“I used existing frame formats for the remote and referee, and defined a simple header-length-CRC frame for the vision link.”
 
 ---
 

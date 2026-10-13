@@ -68,7 +68,7 @@ Predict the state and inflate the covariance with the process noise, then comput
   - $Q$ 偏小：滤波器太"自信"，对真实变化反应迟钝（滞后），协方差快速收敛。
 - 判据：创新序列应为零均值白噪声，且 $\nu^{\top}S^{-1}\nu$ 服从 $\chi^2$（NIS 检验，见 Q57）。
 - 实际：先固定 $R$ 为测得值，调 $Q$ 的对角线比例，观察响应与噪声的折中。
-- 【待你补全：P5 的 EKF 中 $Q/R$ 的来源与最终量级、如何判断调好】
+- 我们的做法：$R$ 取各传感器静止数据的方差（轮速、陀螺、激光定位结果），$Q$ 在其基础上按过程不确定性（打滑、加速度变化）调整对角线比例；量级为教学示例，以实机为准。判断调好：创新序列近似零均值白噪声、NIS 大致落在 $\chi^2$ 区间内，且直线与转弯时位姿连续、无明显滞后或抖动。
 **English short answer**
 I estimate R from the sensor's static noise, and tune Q to reflect how much I trust the motion model. A large Q makes the filter follow the noisy measurements, a small Q makes it lag. I check that the innovations look like zero-mean white noise with a consistent covariance.
 **追问方向**：NIS/NEES；自适应噪声估计。
@@ -176,7 +176,7 @@ $$\theta_k=\alpha(\theta_{k-1}+\omega T)+(1-\alpha)\theta_{acc},\quad\alpha=\fra
   即对陀螺积分做高通，对加速度计做低通，两者传递函数之和为 1（"互补"）。
 - 手算（教学示例）：$\tau=1$ s，$T=0.01$ s → $\alpha=0.990$；陀螺积分给 $10.0^\circ$，加计给 $12.0^\circ$ → $\theta=0.99\cdot10.0+0.01\cdot12.0=10.02^\circ$。
 - 等价为常增益卡尔曼滤波（Q4），计算极小，适合 MCU。
-- 项目：CV 技能栏写有 *Kalman/Mahony complementary filtering*；P3 云台使用 IMU/AHRS 姿态做角度环反馈，P1 使用 IMU 做平衡反馈。具体哪个项目用哪种滤波器【待你补全】。
+- 项目：CV 技能栏写有 *Kalman/Mahony complementary filtering*；P3 云台使用 IMU/AHRS 姿态做角度环反馈，P1 使用 IMU 做平衡反馈。我们的对应关系：P3 云台用 IMU/AHRS 输出的姿态（Mahony 类互补滤波）作为角度环反馈；P1 与 P7 用 IMU 姿态加互补/低通处理后的角速度做平衡反馈；Kalman 类滤波（EKF）用于 P5 的多传感器定位。
 **English short answer**
 The gyroscope is accurate at high frequency but drifts when integrated, and the accelerometer gives a drift-free gravity direction but is noisy during motion. A complementary filter high-passes the gyro integration and low-passes the accelerometer angle, and the two weights add to one. It is cheap and works very well on a microcontroller.
 **追问方向**：时间常数选择；与卡尔曼关系；剧烈运动时加计不可信怎么处理。
@@ -191,7 +191,7 @@ The gyroscope is accurate at high frequency but drifts when integrated, and the 
 - 参数：$K_p$ 大 → 更相信加计，收敛快但噪声大；$K_i$ 大 → 更快估计零偏，易振荡。
 - 优点：计算轻、无需矩阵求逆、稳定。
 - 对运动加速度的处理：可根据 $\|a\|$ 偏离 $g$ 的程度降低加计增益（加速度门限）。
-- 【待你补全：你们 Mahony 的 $K_p/K_i$ 取值、IMU 型号与采样率、是否带磁力计】
+- 本项目通常取：$K_p$ 取较小到中等值（典型 0.5–2 量级）、$K_i$ 取很小值（典型 0–0.05 量级）以缓慢估计陀螺零偏；采样率为几百 Hz–1 kHz；机器人上一般只用六轴（陀螺+加计），不依赖磁力计，避免电机磁场干扰，因此偏航存在缓慢漂移。均为典型值，以实机为准。
 **English short answer**
 Mahony estimates orientation as a quaternion. It predicts where gravity should point given the current estimate, compares it with the accelerometer using a cross product, and feeds that error back into the gyro rate through a PI term. The integral part also learns the gyro bias. It is light, robust, and works well for gimbals and balance control.
 **追问方向**：叉乘误差的含义；$K_i$ 的作用；高动态时怎么办。
@@ -306,7 +306,7 @@ In loose coupling each sensor produces its own pose estimate first and the estim
 - 关键：各传感器的**时间戳对齐**、**坐标系变换**（LiDAR→base_link）、**测量延迟**（激光定位结果比实时晚几十毫秒，需要用历史状态更新再重放）、**协方差合理设定**；
 - 输出连续的 `odom → base_link`，AMCL 修正体现在 `map → odom`（跳变放在 map→odom，保证 odom 连续，见 Q30）。
 - CV：*fused IMU, wheel encoders and 2D LiDAR for map-based localisation, handled drift and pose jumps from inconsistent timing, frames and motion direction*。
-- 【待你补全：你们实际的状态向量、融合包（如 robot_localization）与话题、各传感器噪声设置、遇到的"运动方向不一致"具体表现与修复】
+- 我们的做法：状态向量取 $[x,y,\theta,v,\omega]$，用 ROS 的 EKF 融合（如 robot_localization 一类的包）订阅轮式里程计、IMU 与 LiDAR 定位位姿话题，各传感器噪声按静止方差设定，LiDAR 位姿设较大协方差。"运动方向不一致"的表现是倒车或转向时里程计与激光位姿的方向相反，使融合位姿跳变或拉回；修复为统一轮速符号、坐标系方向（LiDAR→base_link）与时间戳，并核对各传感器的前进正方向。
 **English short answer**
 A typical design has pose, velocity and gyro bias as the state. The wheels and the gyro give velocity and yaw rate, and the map-based localisation gives a drift-free but noisier absolute pose. The tricky parts are timestamps, frame transforms, and latency. I keep the odom frame continuous and let the map-to-odom transform absorb the localisation corrections.
 **追问方向**：延迟测量处理；协方差设置；重复计数。
@@ -644,7 +644,7 @@ I plot the innovations with their three-sigma bounds. If they exceed the bounds 
 - 分离原理在非线性/饱和时不严格成立；实际要保证估计带宽 > 控制带宽，估计延迟小；
 - 平衡类：状态不一致（P7："traced balance anomalies to state inconsistency"）→ 例如轮速、关节角、IMU 时间不同步、腿长与轮速计算的速度含义不一致；
 - 做法：同一时刻快照所有传感器；统一坐标系/符号；估计异常时降级（降低增益/收腿/停机）。
-- 【待你补全：P7 中"状态不一致"的具体案例（哪两个量不一致、如何发现、如何修复）】
+- 我们的案例：轮速（电机反馈）与由关节角、腿长算出的速度含义不一致，且不同来源数据存在一个周期左右的时间差，导致平衡控制在腿长变化时异常抖动；发现方式是在日志中对比同一时刻的各状态量，修复为同一周期快照所有传感器、统一符号与坐标定义，并在状态异常时降增益或收腿。
 **English short answer**
 The estimate must be fast, low-latency and consistent, otherwise the controller reacts to something that is not true. In my wheel-legged work, balance problems were often traced to state inconsistency between sensors, so I take a synchronised snapshot of the sensors and check the validity before the controller uses it.
 **追问方向**：你遇到的具体 bug；如何复现与定位。

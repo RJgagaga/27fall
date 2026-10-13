@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """检查 01_项目学习 下所有 Markdown：断链、代码围栏、$$ 配对、\\[ \\]、手机号邮箱、README 自查表标题。
-用法（在仓库根目录）：python3 -I 01_项目学习/06_维护说明/工具/check_all.py
+用法（在仓库根目录）：python -I 01_项目学习/06_维护说明/工具/check_all.py
 退出码 0 = 无问题。"""
 import os, re, sys, urllib.parse, collections
 ROOT = os.path.join(os.getcwd(), '01_项目学习') if os.path.isdir('01_项目学习') else os.getcwd()

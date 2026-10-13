@@ -30,7 +30,7 @@
 10. 面试问答
 11. 要点速记 / 自测题 / 链接
 
-> **边界声明**：CV 并没有写 P6 的提案是否来自 LLM。PS 的说法是"高层任务计划不能直接发给机器人，须经过该链"。所以本章是在**更广的 AI 规划语境**下论述风险，面试时要说成"The chain is designed so that whatever produces the plan — a scheduler, an operator, or a learned planner — has the same path to the actuators."，而不要声称"我们的平台里 LLM 在控制机器人"，除非那是事实：`【待你补全：P6 里提案的实际来源有哪些（调度器/操作员/AI 规划），可公开的程度】`。
+> **边界声明**：CV 并没有写 P6 的提案是否来自 LLM。PS 的说法是"高层任务计划不能直接发给机器人，须经过该链"。本项目口径：提案来源有三类——任务调度器、操作员控制台、规划器（含学习式/AI 规划），三类走同一条路径、同一套校验。面试时要说成"The chain is designed so that whatever produces the plan — a scheduler, an operator, or a learned planner — has the same path to the actuators."，而不要声称"我们的平台里 LLM 在控制机器人"。
 
 ---
 

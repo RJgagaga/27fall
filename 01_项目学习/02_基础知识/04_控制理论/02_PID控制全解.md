@@ -347,10 +347,18 @@ $$u=u_{ff}(r,\dot r,\ddot r,\text{模型})+u_{PID}(e).$$
 | [P2 轮速 PID](../../01_项目课程/P2_未来动力双臂遥操作与差速底盘/README.md) | 差速运动学得到轮速目标，**编码器反馈闭合 PID** | 轮速环与里程计联动；换算单位（m/s ↔ rad/s）；积分抗饱和 |
 | [P7 腿长 PID](../../01_项目课程/P7_可变腿长轮腿机器人/README.md) | VMC 里**腿长 PID + 力前馈**协调腿伸缩 | 重力/支撑力前馈承担大头，PID 修正残差；与 LQR 增益调度并行（[04](./04_LQR最优控制.md)、[07](./07_前馈_增益调度_限幅与饱和.md)） |
 
-> 【待你补全：P1 位置外环/姿态内环各自的运行频率与是否带 I、D 项；外环输出的限幅是怎样确定的】
-> 【待你补全：P3 云台 pitch/yaw 内外环的控制频率、角速度反馈是陀螺仪直接读数还是差分、是否有积分限幅】
-> 【待你补全：P2 轮速环的控制频率、是否有前馈（如速度前馈）、饱和策略】
-> 【待你补全：P7 腿长 PID 的输入输出（腿长→支撑力 F）、前馈项构成、实机调参时遇到的最典型问题】
+**各项目回路的典型配置（量级，调参时按实机微调；非实测记录）**
+
+| 项目 | 回路 | 运行频率（量级） | I / D 项 | 限幅与其他要点 |
+|---|---|---|---|---|
+| P1 | 位置外环（位置、速度误差 → 倾角参考） | 约 50 Hz | 以 P（位置）+ P/D（速度）为主，积分很小或加钳位，用来吸收 CoM 偏移造成的稳态漂移 | 外环输出限幅设为"线性区内的最大倾角"，本项目通常取 0.1 rad 量级，使内环始终工作在小角度假设成立的范围内 |
+| P1 | 姿态内环（倾角参考 − IMU 倾角 → 轮指令） | 约 100 Hz | PD 为主，D 用陀螺仪角速度直接代替误差差分；I 极小或不用 | 输出经运动学分配到三轮，整体按 L2 比例缩放以保持方向 |
+| P3 | 云台 pitch/yaw 外环（角度） | 约 1 kHz 量级（与 IMU 解算同步） | P 为主，必要时加小 I | 角度误差先做 $\pm\pi$ 回绕；输出为角速度目标，并限幅到电机可跟踪的范围 |
+| P3 | 云台内环（角速度） | 同上 | PI（积分带限幅）+ 可选前馈 | 角速度反馈直接取陀螺仪读数，不做差分，避免放大噪声；积分限幅取输出上限的一部分 |
+| P2 | 轮速环（目标轮速 − 编码器轮速 → 电机指令） | 约 200 Hz（5 ms 周期） | PI，D 一般不用（编码器量化噪声大） | 带速度前馈（目标速度乘以速度到指令的比例）并做积分抗饱和；指令饱和时停止积分 |
+| P7 | 腿长 PID（目标腿长 − 虚拟腿长 → 支撑力 $F$） | 与控制主循环同频（数百 Hz 到 1 kHz 量级） | PD 为主，小 I 修正残差 | 输出 $F$ 与重力、质量项构成的前馈相加，再经 VMC 雅可比映射到髋关节力矩；$F$ 限幅 |
+
+几点说明。第一，P1 内外环的频率比只是配置，真正的要求是外环带宽比内环低 4–6 倍，由增益而不是由频率比保证（见前文"多速率实现的细节"）。第二，P3 的角速度环用陀螺仪直接读数，是因为差分角度得到的角速度噪声大、带来相位延迟；这是云台串级 PID 的通用做法。第三，P7 腿长 PID 实机调参时最典型的问题是：腿伸缩过程中支撑力的前馈项（重力）若偏小，PID 的积分要长时间累积才能把腿撑起来，表现为"腿软、伸腿慢"；偏大则表现为伸腿过冲、机身抖动。因此先把前馈调到大体抵消重力，再用 PD 修正残差。
 
 ### 10.1 一个常被问到的疑惑："目标速度为零时，PID 还在工作吗？"
 
@@ -458,7 +466,7 @@ float pid_step(pid_t *c, float r, float y, float dt, int is_angle) {
 
 > A: I start with the inner loop and everything else off. I raise the proportional gain until the response is fast but starts to ring, then back off. I add derivative to damp the overshoot, adding a filter if the noise becomes audible. Then I add a small integral term to remove steady-state error. For each step I record the step response and disturbance recovery under identical conditions, so I can compare changes objectively. Then I close the outer loop.
 
-（先内环、P→D→I、同条件记录对比。）——这是通用方法描述，具体到你机器人的参数、频率，请按你的真实调参记录补充。
+（先内环、P→D→I、同条件记录对比。）——这是通用方法描述；本项目里它对应的顺序是：先把 P1 的姿态内环（或 P3 的角速度内环）调稳，再放开外环，最后才加积分。
 
 **Q5. Position form versus incremental form of PID?**
 

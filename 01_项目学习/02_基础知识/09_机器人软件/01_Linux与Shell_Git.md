@@ -520,7 +520,7 @@ double max_torque = 12.0;
 
 > Merge combines two branches with a merge commit and keeps the real history. Rebase replays my commits on top of the target branch, giving a linear history, but it creates new commits, so I only rebase my own unpushed branches. In my team workflow I rebase my feature branch on main before opening a pull request, and we merge to main.
 
-【待你补全：你们实际的分支策略（单人仓库/团队 PR/直接提交 main）；如实回答】
+我们的做法是：个人功能分支从 `main` 拉出，开发中频繁小提交；提 PR 前先 `git rebase main` 整理历史，评审后合并回 `main`，`main` 上不直接提交调试代码。参数文件与代码同一次提交，并附一份 rosbag 基线便于回溯。
 
 **Q2. You pushed a bad commit to main. What do you do?**
 

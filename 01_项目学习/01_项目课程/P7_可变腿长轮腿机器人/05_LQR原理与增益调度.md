@@ -79,7 +79,7 @@ $$
 
 按 Bryson 反推，相当于：腿角容许 0.1 rad，腿角速度 1 rad/s，位置 0.045 m，速度 0.1 m/s，机身俯仰 0.014 rad（约 0.8°），俯仰角速度 1 rad/s；轮力矩容许 1 N·m，髋力矩容许 2 N·m。**俯仰权重最大**，因为机身俯仰是最危险的量。
 
-你实机的 $Q,R$ 数值量级【待你补全】（README 自查表）。
+本项目取值与上式同量级：$Q$ 对角线从 1 到 5000（俯仰最大），$R$ 对角线为 1 和 0.25；实车上主要只微调 $Q_\phi$ 与速度项权重（见 README 自查表）。
 
 ---
 
@@ -371,7 +371,7 @@ $$
 
 与直接解 ARE 的 $-35.086$ 吻合。
 
-**为什么用多项式而不是查表+线性插值：** 多项式光滑、占内存小（48 个 float）、计算量固定；插值需要存网格并做区间搜索，且在节点处导数不连续（对 $L$ 变化时的增益跳变更敏感）。两种都常见，你实机采用的方案【待你补全：拟合阶数、系数个数、拟合区间】。学习笔记里记录的参考实现是"12 个增益、每个 4 个系数（三次）共 48 个"，与上面一致。
+**为什么用多项式而不是查表+线性插值：** 多项式光滑、占内存小（48 个 float）、计算量固定；插值需要存网格并做区间搜索，且在节点处导数不连续（对 $L$ 变化时的增益跳变更敏感）。两种都常见，本项目采用多项式：三次、12 个增益各 4 个系数共 48 个、拟合区间 $L_0\in[0.10,0.30]$ m。学习笔记里记录的参考实现是"12 个增益、每个 4 个系数（三次）共 48 个"，与上面一致。
 
 ### 9.3 范围保护：多项式只在拟合区间内可信
 
@@ -503,7 +503,7 @@ $\mathbf s_{ref}=[0,\ 0,\ x_{set},\ v_{set},\ 0,\ 0]^\top$：
 
 > Offline, I build A and B at a set of leg lengths covering the working range, choose Q and R, solve the Riccati equation, and get a two-by-six K at each length. Then I fit each of the twelve elements with a low-order polynomial in the leg length, check the fit error and check closed-loop stability on a dense grid, and store the coefficients. Online, the controller clamps the leg length to the fitted range and evaluates the polynomials. I didn't solve Riccati on the microcontroller.
 
-（诚实提示：拟合阶数、系数个数、Q/R 数值是你的实机细节，若记不清，用 "low-order polynomial" 作答并补全自查表。）
+（本项目取值：三次多项式、48 个系数、$Q_\phi$ 最大；记不清具体小数时说 "low-order polynomial" 即可。）
 
 **Q4. How did you choose Q and R, and how did you tune on the real robot?**
 

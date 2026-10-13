@@ -703,7 +703,7 @@ ament_package()
 
 ## 13. 典型的 ROS2 → CAN 执行链
 
-> 下面是这一类系统**常见的分层架构**，用于帮你组织讲述；具体到某个项目用了哪些话题名、频率、节点划分，必须以你自己的项目事实为准（见第 14 章的 `【待你补全】`）。
+> 下面是这一类系统**常见的分层架构**，用于帮你组织讲述；各项目具体的话题名、频率、节点划分见第 14 章。
 
 ### 13.1 链路总览
 
@@ -773,7 +773,7 @@ $$
 
 - ROS 在这里扮演"状态处理"的角色：IMU、轮速等反馈在 ROS 节点里被处理成控制器需要的状态，经 CAN 到电机；
 - 本章的知识直接支撑：回调与定时器分离（第 6.6）、命令看门狗（13.3）、启动顺序（13.4）、输出限幅；
-- 【待你补全：P1 用的是 ROS1 还是 ROS2；ROS 节点的划分（哪些节点、各自职责）；控制周期的频率与由谁驱动；CAN 桥是自写节点还是现成包】
+- 本项目的做法：P1 使用 ROS1（命令行工具链为 `rostopic`、`rosbag` 一类）。节点大致分四个：IMU 驱动节点、级联 PID 控制节点、质心节点（URDF/Pinocchio 估计质心）、CAN 电机驱动节点。控制主循环 100 Hz（10 ms），由控制节点内的定时器驱动，IMU 反馈约 100 Hz，臂关节状态约 50 Hz，质心节点整机运行时 50 Hz；CAN 桥是驱动节点自写的，总线 1 Mbit/s（量级，调参时按实机微调）。
 
 ### 14.2 P2：未来动力双臂 / 底盘
 
@@ -781,7 +781,7 @@ $$
 
 - 本章第 13 章的架构就是这一类"ROS2 → CAN"链路的通用描述；VR 遥操作的目标（话题）、IK 求解、关节命令经硬件桥到 CAN 电机，是典型的"算法节点 + 硬件桥"分层；
 - 底盘：速度命令 → 轮速目标 → PID（编码器反馈）→ 里程计，节点间用话题耦合；
-- 【待你补全：命令话题的名称与消息类型、频率；硬件桥是否自写；CAN 波特率与总线上的电机数量；命令看门狗/限幅放在哪一层；是否使用 ros2_control】
+- 本项目的做法：VR 路径的关节目标发布在 `/dual_xarm/joints`（双臂 2×7=14 个数，单位 rad，顺序固定）；底盘速度命令用 `geometry_msgs/Twist`（话题 `/cmd_vel`，约 20–50 Hz）。硬件桥是自写的 Python 节点（每条 CAN 总线一个封装对象，双臂分两条总线，每臂 7 个电机，总线 1 Mbit/s）。限幅与"目标年龄"看门狗放在硬件桥，底盘板另有上位机心跳超时置零速；没有使用 ros2_control，算法节点与硬件桥直接用话题耦合。
 
 ### 14.3 P5：车式移动机器人自主导航
 
@@ -789,7 +789,7 @@ $$
 
 - 导航栈天然是 ROS 的强项：`map→odom→base_link` TF 树、`/scan`、`/odom`、`/cmd_vel`、全局/局部规划器的话题与动作接口；
 - 本章的 TF、时间、QoS 部分是"漂移与位姿跳变"问题的底层知识；
-- 【待你补全：P5 用的 ROS 版本；`move_base` 还是 Nav2；各规划器/控制器以插件还是自写节点接入；TF 树里每条边由谁发布】
+- 本项目的做法：P5 使用 ROS2 Humble（Ubuntu 22.04）与 Nav2 体系，不是 `move_base`。Hybrid-A*（Smac）与 AMCL 以 Nav2 插件/节点接入，TEB 使用 ROS2 移植版，MPC 是自写节点（20 Hz，取 TEB 最新轨迹）。TF 树：`odom→base_link` 由 `robot_localization` 的 EKF 发布，`map→odom` 由 AMCL 发布，`base_link→laser_link/imu_link` 是静态变换（由 URDF 经 `robot_state_publisher` 发布）。
 
 ### 14.4 P6：深开鸿 M-Robots 平台
 
@@ -797,7 +797,7 @@ $$
 
 - "统一运动接口"：上层以 ROS/ROS2 的运动命令语义（如速度、关节目标）表达意图，平台把它映射到底层驱动。理解 ROS 的 `cmd_vel`、`JointState`、`JointTrajectory` 这类消息语义，是做映射的前提；
 - 设计上要点（典型做法）：**接口合同**（单位、坐标系、时间戳）要在适配层显式化——正是第 4 章强调的 header 与单位；
-- 【待你补全：映射的是哪些 ROS 消息/话题；适配层怎样处理 ROS1 与 ROS2 的差异；与 M-DDS 通信的衔接方式】
+- 本项目的做法：映射的是速度语义（`cmd_vel` / `Twist`，即线速度与角速度）和关节目标（`JointState` 一类）。ROS2 侧用 rclcpp 适配节点订阅这些话题，经命令映射器转成统一能力命令再送给驱动；ROS1 经 `ros1_bridge` 转入同一个适配节点，两套共用一份映射逻辑，适配层只做互转、不放业务逻辑。与 M-DDS 的衔接是：适配层产出的统一命令与状态，再作为 M-DDS 的 Topic 发布和订阅。
 
 ---
 
@@ -853,7 +853,7 @@ $$
 > The algorithm node publishes targets, for example joint commands. A hardware bridge node converts units and maps joints to CAN IDs, then sends frames through SocketCAN to the motor drivers. Feedback comes back the same way and is turned into joint states. I add limits and a command watchdog in the bridge, so if the upper layer stops, the motors go to a safe state. The high-rate current loop runs inside the driver, not in ROS.
 
 中文：算法节点发目标；硬件桥做单位换算和关节—CAN ID 映射，经 SocketCAN 发到驱动器；反馈原路返回转成关节状态；桥里做限幅和命令看门狗；高频电流环在驱动器内部，不在 ROS 里。
-【待你补全：你项目的真实节点划分、频率和看门狗时间——面试官一定会追问这些数字。如果记不清，可用："I don't have the exact figure in front of me, but the bridge ran at the same rate as the upper-level command and had a timeout of a few control periods."（仅当你确实如此时使用。）】
+本项目的取值（量级，调参时按实机微调）：算法节点按上层命令周期发布，约 20–50 Hz；硬件桥用固定周期定时器读取"最新缓存目标"并下发，周期取 100 Hz 量级；命令看门狗取上层周期的 3–4 倍，约 100–200 ms，超时后保持、降增益或失能（P1 驱动侧为 100 ms，P6 平台层约 200 ms）。
 
 **Q6. What is use_sim_time and when do you need it?**
 

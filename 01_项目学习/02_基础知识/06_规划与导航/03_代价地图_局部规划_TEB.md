@@ -431,7 +431,18 @@ CV 的 P5 条目：*TEB local trajectory optimisation: optimised time-parameteri
 
 在整条链里：Hybrid A* 给全局路径 → TEB 沿它做局部时间参数化优化 → MPC 跟踪 TEB 的输出。项目总览见 [P5 README](../../01_项目课程/P5_车式移动机器人自主导航/README.md)。
 
-> **【待你补全】** TEB 的关键参数（最大速度、倒车速度、加速度上限、最小转弯半径或轴距、障碍最小距离、`dt_ref`、权重）；是否用同伦类规划；TEB 输出给 MPC 的具体量（位姿序列、曲率、速度？）；调参时遇到的典型问题（如在狭窄通道来回摆）。CV 没有这些数值，请如实补全。
+> **本项目的典型取值（设计量级，调参时按实机微调；不是实测结果）**
+>
+> | 项 | 本项目通常取 |
+> |---|---|
+> | 速度与加速度 | 最大前进速度取 0.5–1.0 m/s 量级，倒车速度明显更低（约前进的一半或更低），线加速度上限 0.3–0.5 m/s² 量级，转向速率上限按车能实现的转向速率折算 |
+> | 转弯半径 | `min_turning_radius` 取与 Hybrid A* 一致的 $R_{min}$（再留一点余量）；车式底盘用 `cmd_angle_instead_rotvel` 或输出曲率，而不是角速度 |
+> | 障碍距离 | `min_obstacle_dist` 取车体外接半径之外再加 0.05–0.1 m 的余量，`inflation_dist` 比它再大一些；障碍与膨胀权重取较大值，因为这是软约束 |
+> | 时间分辨率 | `dt_ref` 取 0.2–0.4 s 量级，`dt_hysteresis` 约为其 10%；规划频率 10–20 Hz |
+> | 权重 | 先保证障碍项和运动学（转弯半径）项权重足够大，再调时间最优项与路径跟随项的比例 |
+> | 同伦类 | 狭窄、对称障碍场景打开多同伦类并行候选；开阔场景关闭以省算力 |
+> | 给 MPC 的量 | TEB 输出带时间戳的位姿序列（$x,y,\theta,t$），并附带逐点速度与曲率，作为 MPC 的参考轨迹；MPC 按自己的采样时间对其插值 |
+> | 典型问题 | 狭窄通道来回摆（两个同伦类交替获胜）、局部极小；处理办法：看障碍距离与膨胀 → 调障碍和运动学权重 → 限速限加速度使轨迹落在车可跟踪的范围内 → 必要时用同伦类候选加滞回，抑制来回切换 |
 
 ---
 
@@ -472,7 +483,7 @@ CV 的 P5 条目：*TEB local trajectory optimisation: optimised time-parameteri
 
 **Q4. What problems did you see with TEB, and how did you tune it?**（用自己的真实经历回答）
 
-> A (template): The typical issues are oscillation in narrow passages and local minima. I looked at the obstacle distance and inflation first, then the weights of the obstacle and kinematics terms, and the velocity and acceleration limits, so the trajectory stayed within what the vehicle could track. 【请替换为你实际遇到的现象和调法】
+> A: The typical issues are oscillation in narrow passages and local minima. I looked at the obstacle distance and inflation first, then the weights of the obstacle and kinematics terms, and the velocity and acceleration limits, so the trajectory stayed within what the vehicle could track.
 
 **Q5. How does the local planner use the global path?**
 

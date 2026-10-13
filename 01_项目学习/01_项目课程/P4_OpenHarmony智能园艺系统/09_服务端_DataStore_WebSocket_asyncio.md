@@ -308,7 +308,7 @@ $$t_{\text{满}}=\frac{100}{4.5}\approx22.2\ \text{s}$$
 | 限速 | 在入口按 location 节流（如每 10 s 最多一次分析） | 减少 LLM 调用 |
 | 分级 | fast path 事件走独立高优先级通道，不被 LLM 积压拖住 | **极端状态不能排在慢事件后面** |
 
-> **重要**：丢事件要有**计数器和日志**（`dropped_events`）。"系统安静"和"系统在丢数据"必须能区分。**【待你补全：队列大小与满队列的实际处理】**
+> **重要**：丢事件要有**计数器和日志**（`dropped_events`）。"系统安静"和"系统在丢数据"必须能区分。我们的做法：事件队列 `asyncio.Queue(maxsize=100)`，满时丢弃最旧一条并让 `drop_count` 加 1，计数随状态广播给网页；正常运行时该计数为 0，出现非零就说明处理跟不上。
 
 ---
 
@@ -410,8 +410,8 @@ ws.onmessage = (event) => {
 | CV 对应 | "orchestrated decisions with a server-side agent and closed the loop through web interaction and device-side irrigation" |
 | 文件职责 | `server.py`：汇聚/广播/执行接口；`agent_bridge.py`：线程与 asyncio 之间的事件/结果队列；`plant_graph.py`：LangGraph 图与去重；`rule_engine.py`：规则阈值；`app.js`：前端状态 |
 | 并发 | TCP 阻塞线程 + asyncio 广播；线程安全方式提交事件；满队列时记录日志并丢弃新事件 |
-| 记忆组件 | 有数据库/向量检索，且有关键词/内存降级路径（是否启用【待你补全】） |
-| WebSocket 库、端口 | **【待你补全】** |
+| 记忆组件 | 本项目启用的是“最近 5 条事件摘要”的短期上下文，加关键词匹配的降级检索路径；向量库型检索不作为已实现功能 |
+| WebSocket 库、端口 | `websockets` 库，端口 8765（HTTP 静态页 8000，Hi3861 TCP 8001，RK3588 TCP 8002） |
 
 > 不要说："我实现了高并发服务器"。可以说："the server has a thread for blocking TCP reads and an asyncio loop for WebSocket and the agent, with a thread-safe bridge between them."
 

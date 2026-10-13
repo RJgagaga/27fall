@@ -119,7 +119,7 @@ $$\Delta=\sqrt{0.3^2+0.1^2}=0.316\ \mathrm m,\quad \Delta\theta=0.02\ \mathrm{ra
 
 ## 5. 平滑与门限策略
 
-下面讲"典型做法"，具体项目采取了哪一种【待你补全：你在项目里实际用的处理手段】。
+下面讲"典型做法"，我们的做法是 5.1 的限速平滑加 5.2 的门限确认两者叠加，不使用 5.3 的第二个 EKF。
 
 ### 5.1 限速平滑（slew limit / 低通）
 
@@ -183,7 +183,7 @@ CV 说 "output a continuous vehicle state"。工程上这是一份**契约**：
 |---|---|---|
 | `stamp` | 状态对应的时间 | **测量时刻**，不是发布时刻；单调不倒退 |
 | `frame` | 位姿所在坐标系 | 控制/局部用 `odom`；全局用 `map` |
-| `x, y` | 参考点位置 | m；参考点 = 后轴中心（与模型一致）【待你补全：实车约定】 |
+| `x, y` | 参考点位置 | m；参考点 = 后轴中心（与模型一致；本项目实车即取后轴中心） |
 | `yaw` | 航向 | rad，$[-\pi,\pi]$ 或 unwrap，文档写清 |
 | `v` | 纵向速度 | m/s，**带符号**（倒车为负） |
 | `omega` | 偏航角速度 | rad/s，来自陀螺融合 |
@@ -262,7 +262,7 @@ def find_steps(log, d_thr=0.05, a_thr=0.02):
 **Q2. How did you make the vehicle state continuous?**
 
 > There are two parts. First the source of the continuous state is the EKF fusing wheel speed and the IMU yaw rate, which is smooth by construction. Second, the localisation correction is kept in the map-to-odom transform, so the planner and controller operate in odom and don't see the steps directly; large corrections are rate-limited or confirmed before they are applied. The inconsistent timing, frames and motion direction were fixed at the data level first.
-> 【待你补全：你实际用的平滑/门限手段、阈值】
+> 本项目取值约：修正速率上限取车速的约 20%，下限 0.05 m/s、上限 0.2 m/s，角度 0.15 rad/s；单次修正超过 0.5 m 或 10° 视为可疑，需连续 3 次一致且粒子云协方差迹小于 0.3 才应用；平滑带来的延迟约 1 s，可接受。
 
 **Q3. How would you debug a pose jump on the real vehicle?**
 

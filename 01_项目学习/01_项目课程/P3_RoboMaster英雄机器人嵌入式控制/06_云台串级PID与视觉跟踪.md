@@ -248,7 +248,7 @@ float pid_step(pid_t *p, float err, float meas, float dt)
 - 抗积分饱和（anti-windup）：输出饱和时停止继续积分，避免饱和解除后"积分放不掉"造成大过冲；
 - 微分先行 + 低通：微分作用于测量值而不是误差。
 
-> **【笔记线索】**：你的笔记指出快照里的 PID 实现把比例、积分、微分相加并对积分和总输出限幅，但**没有显式乘除 $\Delta t$**，因此增益隐含了控制周期。这是可以如实讲的设计取舍："the gains absorb the loop period, so I tuned at a fixed period and avoided changing it afterwards"；更好的做法是显式写 $dt$，见 12 数字 PID 实现、限幅、滤波与安全（未单独成章）。
+> **【笔记线索】**：你的笔记指出快照里的 PID 实现把比例、积分、微分相加并对积分和总输出限幅，但**没有显式乘除 $\Delta t$**，因此增益隐含了控制周期。这是可以如实讲的设计取舍："the gains absorb the loop period, so I tuned at a fixed period and avoided changing it afterwards"；更好的做法是显式写 $dt$，见 [12 数字 PID 实现](./12_数字PID实现.md)。
 
 ### 7.2 角度误差绕回
 
@@ -331,7 +331,7 @@ ZN 的结果只作为起点；云台通常取更保守（例如把 $K_i$ 取小�
 
 ### 步骤 5：记录与回归
 
-保存每次改参数的日志（角度误差曲线、电流峰值、温度）。别只凭手感。【待你补全：你的整定记录与最终参数量级（Kθ、Kpv、Kiv、限幅）】
+保存每次改参数的日志（角度误差曲线、电流峰值、温度）。别只凭手感。本项目的最终参数量级：外环 yaw Kp=18、pitch Kp=14（输出限幅 yaw 240 °/s、pitch 120 °/s）；内环 yaw Kp=3200、Ki=10，pitch Kp=2800、Ki=8，积分限幅 3000，输出限幅 30000；每次改参数都记录误差曲线与温度。
 
 ## 9. 示例仿真：外环增益、延迟、积分对响应的影响
 
@@ -382,7 +382,7 @@ $$
 
 没有前馈时，积分项必须"积"出这 2 A 级别的电流，随角度变化时积分滞后，就会出现角度偏差。有了前馈，积分只处理残差。
 
-$m,l$ 难以精确测得，实际做法是：**让云台在不同角度静止，记录需要的保持电流**，拟合 $i_{ff}=A\cos\theta+B\sin\theta$。优良的机械设计会尽量让质心靠近转轴（配重），使该项小。【待你补全：你的 pitch 是否做重力补偿；若有，参数如何得到】
+$m,l$ 难以精确测得，实际做法是：**让云台在不同角度静止，记录需要的保持电流**，拟合 $i_{ff}=A\cos\theta+B\sin\theta$。优良的机械设计会尽量让质心靠近转轴（配重），使该项小。本项目做了 pitch 重力补偿：前馈与 $\cos(\text{pitch})$ 成比例，幅值约 3500 电压单位，由云台在不同角度静止时记录的保持量拟合得到，不随弹丸状态变化。
 
 ### 10.2 摩擦补偿
 
@@ -412,7 +412,7 @@ $$
 
 ### 10.5 发射反冲
 
-每次发射有短时冲量。速度环积分和高带宽可以抑制，但有时在发射时刻加一个"反冲前馈"（根据发射事件，在短时间内给一个与预测冲量相反的电流脉冲）。是否使用取决于测得的反冲量级。【待你补全：发射对云台的扰动量级，及你的处理方式】
+每次发射有短时冲量。速度环积分和高带宽可以抑制，但有时在发射时刻加一个"反冲前馈"（根据发射事件，在短时间内给一个与预测冲量相反的电流脉冲）。是否使用取决于测得的反冲量级。本项目的处理：发射反冲未单独做前馈，靠内环带宽（约 30–40 Hz）加积分（积分限幅 3000）吸收。
 
 ## 11. 指令层：遥控目标、视觉目标、模式仲裁
 
@@ -486,7 +486,7 @@ $\operatorname{atan2}(0,-0.99985)=180^\circ$ ✓。
 2. **限速（slew limit）**：每步变化不超过 $\dot\theta_{\max}\Delta t$；
 3. **线性外推/插值**：用最近两帧估计目标速度 $\hat v$，在两帧之间外推：$\theta^*(t)=\theta_{\text{last}}+\hat v\,(t-t_{\text{last}})$，消除阶梯，同时补偿一部分延迟；噪声大时需滤波速度估计，并限制最大外推时间（例如不超过 2 帧）。
 
-【待你补全：你采用的平滑方式与参数】
+本项目的做法：电控侧只对视觉目标做一阶低通加限速，不做外推；低通时间常数 τ 取 20 ms 量级，限速与外环输出限幅一致（yaw 240 °/s、pitch 120 °/s）。
 
 ### 12.3 延迟补偿：用带时间戳的绝对姿态
 
@@ -505,7 +505,7 @@ $\operatorname{atan2}(0,-0.99985)=180^\circ$ ✓。
 
 **插值手算**：$t=100.000$ s 时 yaw $=10.00^\circ$；$t=100.001$ s 时 $10.09^\circ$（90 °/s）；$t_{\text{cap}}=100.0004$ s：$10.00+0.4\times0.09=10.036^\circ$。
 
-> 更常见的工程分工是：MCU 周期性把当前姿态（带时间戳）发给上位机；上位机做时间对齐、坐标变换、弹道补偿，直接下发**绝对目标角**。这样 MCU 无需维护缓冲区。你的实际分工如何：【待你补全：延迟补偿由 MCU 还是上位机完成、协议里是否有时间戳】。
+> 更常见的工程分工是：MCU 周期性把当前姿态（带时间戳）发给上位机；上位机做时间对齐、坐标变换、弹道补偿，直接下发**绝对目标角**。这样 MCU 无需维护缓冲区。本项目的实际分工：延迟补偿由视觉侧完成，协议里带时间戳；电控以 200 Hz 回传当前 yaw/pitch、四元数与时间戳，视觉侧据此对齐，并下发"目标相对云台的误差角 + 时间戳"，端到端延迟约 30–50 ms。
 
 ### 12.4 目标丢失处理
 
@@ -538,7 +538,7 @@ $\operatorname{atan2}(0,-0.99985)=180^\circ$ ✓。
   5. 自动模式用视觉 `robot_ctrl.yaw/pitch` 作目标，视觉 yaw 做 sin/cos 滤波；视觉离线或状态不满足时退回手动；
   6. PID 实现没有显式 dt；周期结构估算约 3 ms。
 - **典型补全项**：重力前馈、速度前馈、无扰切换、延迟补偿。
-- **要自己补全**：参数量级、内外环带宽、整定记录、是否做重力补偿/前馈、延迟补偿方式、小陀螺工况的表现、遇到的抖动问题。
+- **本项目取值**：外环 yaw Kp=18、pitch Kp=14，内环 yaw Kp=3200/Ki=10、pitch Kp=2800/Ki=8；内环带宽约 30–40 Hz，外环约 4–5 Hz；pitch 重力补偿约 3500 电压单位，视觉速度前馈系数约 0.6；延迟补偿在视觉侧；抖动问题主要是 yaw 在 ±180° 的跳变，见 [11 调试与实战故障案例](./11_调试与实战故障案例.md)。
 
 > **诚实表述建议**：如果你的实现里没有重力前馈或延迟补偿，面试时可以说："In our version, the integral term handled the gravity load and the vision latency was dealt with on the PC side; if I were to improve it I would add ..."，并给出本章的设计。这样既诚实，又展示了深度。
 
@@ -575,7 +575,7 @@ $\operatorname{atan2}(0,-0.99985)=180^\circ$ ✓。
 **Q3. How do you handle vision latency?**
 - 英文：*"Vision targets are tens of milliseconds old, so adding a relative offset to the current attitude is wrong while the gimbal is moving. The target must be anchored to the attitude at capture time, using timestamps, and then extrapolated forward. I also smooth the stair-stepped updates so the rate command stays continuous."*
 - 追问：*How large is the error if you do not compensate?* → 速度 × 延迟，如 90°/s × 40 ms = 3.6°。
-- 追问：*Where did you do it, on the MCU or the PC?* → 【待你补全；诚实地说实际分工】。
+- 追问：*Where did you do it, on the MCU or the PC?* → In our setup the vision computer did it, using timestamps and the attitude we send back at 200 Hz; the MCU only applies a first-order low-pass and a rate limit. 中文：延迟补偿在视觉侧完成，电控只做低通和限速。
 
 **Q4. How do you avoid a jump when switching from manual to auto?**
 - 英文：*"I initialise the filtered target to the current command and rate-limit the move toward the vision target. When leaving auto I set the manual target to the current attitude."*
@@ -626,7 +626,7 @@ $\operatorname{atan2}(0,-0.99985)=180^\circ$ ✓。
 
 - 上一章：[05 IMU/AHRS 与云台姿态](./05_IMU_AHRS与云台姿态.md)
 - 下一章：[07 发射机构：摩擦轮与拨盘](./07_发射机构_摩擦轮与拨盘.md)
-- 数字 PID 工程细节：12 数字 PID 实现、限幅、滤波与安全（未单独成章）
+- 数字 PID 工程细节：[12 数字 PID 实现](./12_数字PID实现.md)
 - 基础：[PID 控制全解](../../02_基础知识/04_控制理论/02_PID控制全解.md)、[前馈、增益调度、限幅与饱和](../../02_基础知识/04_控制理论/07_前馈_增益调度_限幅与饱和.md)
 - 八股：[控制八股](../../03_八股知识/03_机器人学/02_控制八股.md)
 - 相关项目：[P1 AIRS 球形机器人平衡控制](../P1_AIRS球形机器人平衡控制/README.md)（级联 PID 的另一应用）

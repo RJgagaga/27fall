@@ -281,7 +281,7 @@ async def good():
 
 ### 3.7 在项目里怎么用
 
-P4：服务端 Agent 与网页之间的 WebSocket 推送（观察结果、系统状态更新）典型使用 asyncio——一个事件循环同时处理多个客户端连接，并在收到视觉事件时向前端广播。LangGraph 的节点可以是异步函数（`async def`），调用 LLM/HTTP 的等待时间不阻塞其它请求。具体实现【待你补全：P4 服务端用的框架（FastAPI/websockets/其他）、是否使用 asyncio、LangGraph 节点是否异步】。
+P4：服务端 Agent 与网页之间的 WebSocket 推送（观察结果、系统状态更新）典型使用 asyncio——一个事件循环同时处理多个客户端连接，并在收到视觉事件时向前端广播。LangGraph 的节点可以是异步函数（`async def`），调用 LLM/HTTP 的等待时间不阻塞其它请求。本项目的设计是：WebSocket 用 websockets 库（端口 8765，静态页另走 HTTP 8000），一个 asyncio 事件循环处理所有客户端；视觉事件进入 `asyncio.Queue`（maxsize=100，满则丢最旧并计数），LangGraph 节点按需写成 `async def`，等待 LLM/HTTP 时不阻塞其它请求。
 
 ---
 
@@ -660,7 +660,7 @@ if __name__ == "__main__":
 
 > Yes, as an offline tool. For example, solve_continuous_are returns the Riccati solution, from which I compute the LQR gain K equals R inverse B transpose P, and I check the closed-loop eigenvalues. For fitting a model or a calibration, least_squares with a robust loss handles outliers. I always check convergence status and the scaling of the parameters.
 
-【待你补全：你在 P1/P7 中是否用 Python/MATLAB 求过 LQR 增益（工具与流程），P2 中 MuJoCo/Mink 的使用方式。只说真实做过的事；CV 里 P1 的 LQR 是"建模分析"，P7 是"增益调度 LQR"】
+我们的做法是：P1 的 LQR 在第 05 章的归一化模型上离线求解（Python 用 `scipy.linalg.solve_continuous_are`，或 MATLAB 的 `lqr`），取 $Q=\operatorname{diag}(4,4,100,1)$、$R=0.25$，得到的 $K$ 只作参照与分析（解释内环增益比例、判断饱和），不直接上机，上机的是级联 PID；P7 的增益调度 LQR 是按腿长取若干网格点离线求一组 $K$，运行时按腿长插值。P2 里先用 MuJoCo/Mink 的 Python 脚本在仿真中验证 IK 任务与限位配置，再接到 ROS2 与真机。（取值为设计量级，调参时按实机微调。）
 
 **Q5. How do you structure and share a Python project?**
 

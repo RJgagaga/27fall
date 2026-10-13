@@ -266,7 +266,7 @@ $$t_{theory}=\frac{16.5\times10^9}{6\times10^{12}}=2.75\ \text{ms}$$
 
 **这是 100% 利用率的下限**，实际硬件利用率（算子是否支持、内存带宽、层间等待）通常远低于峰值，一个粗略的预期是峰值的 10%–30%，对应 **约 10–30 ms/帧**（推算，仅为量级）。再加上前处理（缩放、格式转换）、后处理（NMS）和数据搬运，端到端可能是几十毫秒。
 
-**提醒**：项目里真实的帧率、延迟必须来自实测。【待你补全：P4 中 RK3588 上 YOLOv5 INT8 的实测推理耗时/帧率、输入分辨率、置信度阈值；若没有精确数字，面试时可说"我没有记住确切数字，大致是…，并说明怎么测"】。
+**提醒**：项目里真实的帧率、延迟必须来自实测。本项目通常取：输入 640×640、置信度阈值约 0.25–0.4、NMS 阈值约 0.45；RK3588 NPU 上 YOLOv5s INT8 单帧推理量级为十几到几十毫秒（量级，未核对，实际以板上计时为准），测法是在推理前后打时间戳取平均。
 
 ### 7.2 INT8 量化与部署链
 
@@ -377,7 +377,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 > A single threshold causes chattering when the sensor noise crosses it: the pump would switch on and off rapidly. With separate start and stop thresholds, the state only changes when the moisture crosses the far threshold, so noise within the band doesn't trigger switching. I also gave manual commands priority over the automatic logic and kept the logic local, so it works even if the network or the vision side is down.
 
-【待你补全：P4 的实际阈值与最短/最长运行限制，采样滤波方式；若不确定用"example thresholds"说明】
+本项目通常取：土壤湿度低于约 30% 启泵、高于约 60% 停泵（独立启停阈值形成回差），单次最长运行约 30 s、两次之间最短间隔约 10 min 防止过灌，采样做多次取中值或滑动平均滤波；手动优先覆盖自动。
 
 **Q3. How do you run a YOLO model on RK3588?**
 

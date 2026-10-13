@@ -142,7 +142,7 @@ flowchart TD
 
 ## 4. 状态（state）
 
-线索中 state 含这些字段（实际字段名【待你补全】）：
+我们的 state 含这些字段（TypedDict）：
 
 ```python
 class PlantState(TypedDict, total=False):
@@ -195,7 +195,7 @@ CV 的措辞："a rule-based fast path for **extreme states**"。为什么是"�
 | 传感失效 | 传感器无效/过期 | 请求 `pump_off` 并告警 |
 | 温度极端 | 例如 `temperature > 40`（若有传感） | 告警（不动泵） |
 
-**【待你补全：你系统的 fast path 实际条件与阈值（线索里的示例用到了 56 这个本地启动阈值，与 CV 的 "extreme states" 的关系需要你核对）】**
+**我们的实际条件**：极干为 `moisture < 20`，且传感数据新鲜（不超过 10 s）、模式为 auto，此时直接产生 `pump_on(max_s=60)` 的受约束请求；极湿为 `moisture > 85`，只告警、不浇水；传感失效或长时间无新数据则告警并走 skip。56 是 Hi3861 本地的启动阈值，服务端 fast path 刻意取更极端的 20，二者不重叠：一般偏干由本地滞回处理，只有“已经非常干”才需要服务端立刻留痕和通知。
 
 ### 5.2 fast path vs skip
 
@@ -340,7 +340,7 @@ LLM 返回的 `proposed_action` 只是**提案**。如果允许其进入执行�
 2. 走与 fast path **同一个** `execution` 校验（白名单、模式、新鲜度、范围）；
 3. 不允许 LLM 直接构造硬件命令字符串。
 
-更保守的做法（CV 的 "recommendations or constrained requests"）：LLM 节点**只产生建议**，需要人确认后才生成命令；由规则 fast path 处理自动动作。**【待你补全：你的 LLM 节点是否可以产生命令请求；LLM 型号与调用方式】**
+更保守的做法（CV 的 "recommendations or constrained requests"）：LLM 节点**只产生建议**，需要人确认后才生成命令；由规则 fast path 处理自动动作。我们的做法：LLM 节点只产生建议或命令请求，请求必须经过白名单和策略校验才会发出；LLM 使用 OpenAI 兼容接口的 DeepSeek-V3 类通用对话模型，temperature 取 0.2，要求按固定 JSON schema 输出，解析失败就回退到规则结果。
 
 ---
 
@@ -360,7 +360,7 @@ LLM 返回的 `proposed_action` 只是**提案**。如果允许其进入执行�
 
 **用途**：避免重复（5 分钟内不重复浇）、判断趋势（连续 5 次下降）、提供上下文（上次施肥时间）。
 
-> 线索：长期记忆**是否持久化、存哪里**文档里没有明确说明。**不要声称已实现长期记忆**，除非你确认（笔记里列为"不能确认"）。**【待你补全：你的系统到底有什么记忆（短期 history？数据库？）】**
+> 线索：长期记忆**是否持久化、存哪里**文档里没有明确说明。**不要声称已实现长期记忆**，除非你确认（笔记里列为"不能确认"）。我们实际启用的是短期记忆：state 里的 `history` 保存最近 N=5 条事件摘要；长期持久化记忆和向量库没有实现，所以面试里不声称长期记忆。
 
 ### 8.3 谁决定存什么
 
@@ -403,7 +403,7 @@ LLM 返回的 `proposed_action` 只是**提案**。如果允许其进入执行�
 | 运行过 | 在真实运行中产生过日志/输出 | 运行记录 |
 | 有效 | 对决策质量有可测量的提升 | 评估 |
 
-面试时只报告你**有证据的那一级**。向量库型号、历史保留时间、top-k、知识库内容、是否真被调用：**【待你补全】**。
+面试时只报告你**有证据的那一级**。本项目取值：不使用向量库；知识库是约 20 条植物护理文本，用关键词匹配取 top-k=3 放进 `rag_context`，只在 care 分支调用；历史只保留最近 5 条，进程重启后丢失。
 
 ---
 
@@ -449,7 +449,7 @@ LLM 返回的 `proposed_action` 只是**提案**。如果允许其进入执行�
 
 **核心一句话**：*Reliability comes from the system around the model — validation, whitelists, fallbacks and ownership of authority — not from trusting the model.*（可靠性来自模型之外的系统设计：校验、白名单、降级和权限归属，而不是信任模型。）
 
-> 诚实边界：这些是**设计与对策**。你实际做了哪些、有没有量化评估（拒绝率、误报率等）**【待你补全】**；没有做的就说"I would add ..."。
+> 诚实边界：这些是**设计与对策**。我们实际做了的是确定性部分的表驱动测试（例如“手动关闭时永不产生 pump_on”）；没有做拒绝率、误报率这类大规模量化评估，LLM 文字部分只做过人工抽查，所以面试里说 "I would add a small labelled set"。
 
 ---
 
@@ -464,7 +464,7 @@ LLM 返回的 `proposed_action` 只是**提案**。如果允许其进入执行�
 | 去重 | key=`event_id:scope`，约 60 秒窗口；在执行分析前标记 |
 | 作用域 | `detect` 作用域不复用 sensor 的快速规则，避免同一事件重复输出 |
 | 记忆/RAG | state 有 history/RAG 字段；有数据库/向量检索与降级路径的代码，是否启用不确定 |
-| LLM 型号 | **【待你补全】** |
+| LLM 型号 | OpenAI 兼容接口的 DeepSeek-V3 类通用对话模型，temperature 0.2，JSON schema 输出 |
 
 ---
 
@@ -591,10 +591,10 @@ print(graph.invoke({"sensor": {"moisture": 12, "age_s": 1, "valid": True},
 > "The model has no authority. Its output is a proposal that gets schema-checked and policy-checked, so injected text can at worst change advice wording. I also keep untrusted text — user chat input, retrieved documents — in a clearly separated data section of the prompt, and don't let the model choose permissions or command names."
 
 **Q5. Did you implement memory or RAG?**
-> 【按真实情况回答。】 "The state has fields for recent history and retrieved context. 【补全：实际实现了什么，是否启用，用什么检索】. I'm careful to say what is implemented versus what is a design option."
+> "The state has fields for recent history and retrieved context. In our system the recent history keeps the last five event summaries and is switched on, and the retrieval is a simple keyword match over about twenty plant-care notes, top three. There is no vector store and no long-term memory. I'm careful to say what is implemented versus what is a design option."
 
 **Q6. How did you evaluate the agent?**
-> "I tested the deterministic parts with table-driven and property-based tests, like 'with manual off, no pump-on command is ever produced'. For the LLM text, I'd use a small labelled set and human review. 【补全：你实际做了什么评估；如果没有，就说计划如何做】"
+> "I tested the deterministic parts with table-driven and property-based tests, like 'with manual off, no pump-on command is ever produced'. For the LLM text, I'd use a small labelled set and human review. What I actually did was table-driven tests of the deterministic parts and manual spot checks of the LLM text. I did not build a large labelled set, so that is the first thing I would add."
 
 ---
 

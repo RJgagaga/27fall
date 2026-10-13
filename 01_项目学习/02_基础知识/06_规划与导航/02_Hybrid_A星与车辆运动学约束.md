@@ -403,7 +403,18 @@ CV 的 P5 条目：*Hybrid-A\* global planning: incorporated vehicle heading and
 
 在整条导航链里，Hybrid A* 产生**全局路径**；局部规划器 TEB 在其附近用实时障碍信息做时间参数化优化（[下一章](./03_代价地图_局部规划_TEB.md)）；MPC 负责跟踪（[轨迹跟踪章](./04_轨迹跟踪_PurePursuit_Stanley_MPC.md)）。项目总览见 [P5 README](../../01_项目课程/P5_车式移动机器人自主导航/README.md)。
 
-> **【待你补全】** 面试官大概率追问：轴距、最大转向角、最小转弯半径的数值；离散化分辨率（位置、航向）；运动基元个数；启发函数用了哪些；规划耗时；是否做了平滑；是自己实现还是用现成实现（如导航框架里的插件）。CV 没有这些数字，请如实补全；若使用现成实现，用"我配置并调参了"的说法。
+> **本项目的典型取值（设计量级，调参时按实机微调；不是实测结果）**
+>
+> | 项 | 本项目通常取 |
+> |---|---|
+> | 轴距与转向 | 轴距 $L$ 取车体量级的几十厘米，最大转向角 $\delta_{max}$ 取 25°–30°；由 $R_{min}=L/\tan\delta_{max}$ 得到最小转弯半径（教学例：$L=0.5$ m、$\delta_{max}=30^\circ$ 时 $R_{min}\approx0.87$ m），规划时再乘 1.1–1.2 的余量，避免控制器跟不上 |
+> | 离散化 | 位置分辨率 0.1–0.2 m，航向 5° 一格（72 个朝向 bin） |
+> | 运动基元 | 前进三个（左极限、直行、右极限转向），允许倒车时再各加一个，共 6 个；弧长略大于一个格子对角线（约 0.25–0.3 m），保证每次扩展都走出父节点的桶 |
+> | 启发函数 | 取 $\max(h_1,h_2)$：忽略障碍的 Reeds-Shepp/Dubins 长度，与带障碍的 2D 栅格最短路（holonomic-with-obstacles） |
+> | 代价项 | 倒车、转向变化、换向（前进/倒车切换）、障碍代价四类惩罚，权重按"先保证可行、再调风格"的顺序整定 |
+> | 后处理 | 搜索后做曲率检查与路径平滑（离障碍远、曲率不超限、二阶差分小），平滑后再用三点曲率复核 $\kappa\le1/R_{min}$ |
+> | 规划耗时 | 设计目标是在几十到几百毫秒内给出一条全局路径，只在新目标或路径失效时触发，不要求每个控制周期都重算 |
+> | 实现方式 | 我们的做法是把 Hybrid A* 作为全局规划器插件接入导航框架，自己配置并调参：footprint、$R_{min}$、分辨率与各惩罚权重 |
 
 ---
 
@@ -447,7 +458,7 @@ CV 的 P5 条目：*Hybrid-A\* global planning: incorporated vehicle heading and
 
 **Q5. What did you tune for Hybrid A* in P5?**（用自己的真实经历回答）
 
-> A (template): I mainly tuned the cost weights — the reverse and direction-change penalties and the obstacle cost — plus the step length and angular resolution, and I checked the footprint against the real vehicle. 【请替换为你真实调过的参数和现象】
+> A: I mainly tuned the cost weights — the reverse and direction-change penalties and the obstacle cost — plus the step length and angular resolution, and I checked the footprint against the real vehicle. In practice I changed one group at a time: first feasibility (turning radius and footprint), then resolution, then the penalties.
 
 ## 13. 本章要点速记
 

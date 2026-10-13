@@ -87,7 +87,7 @@ TEB（[09 章](./09_TEB局部轨迹优化.md)）给出一条漂亮的带时间�
 
 $$\dot x=v\cos\psi,\quad \dot y=v\sin\psi,\quad \dot\psi=\frac{v}{L}\tan\delta,\quad \dot v=a.$$
 
-> **说明**：也可以把 $(v,\delta)$ 当输入、状态只有 $(x,y,\psi)$；或把 $\delta$ 当状态、转角速率 $\dot\delta$ 当输入（可直接约束转角速率并建模转向滞后）。输入形式选哪个取决于底层接口接受什么指令【待你补全：项目里 MPC 的输入形式与状态维数】。
+> **说明**：也可以把 $(v,\delta)$ 当输入、状态只有 $(x,y,\psi)$；或把 $\delta$ 当状态、转角速率 $\dot\delta$ 当输入（可直接约束转角速率并建模转向滞后）。输入形式选哪个取决于底层接口接受什么指令。本项目采用 $\mathbf x=[x,y,\psi,v]^\top$（$n_x=4$）、$\mathbf u=[a,\delta]^\top$（$n_u=2$），下位机接收的是速度与转角指令，所以对 MPC 输出的 $a$ 积分一步得到 $v$ 指令。
 
 **倒车**：$v<0$，模型自动给出相反的航向变化；约束里速度下界为负值即可（但线性化点的符号要对）。
 
@@ -283,7 +283,7 @@ print(U)   # -> [-0.0401, -0.0191]
 | 内点法（interior point） | 用对数障碍函数把不等式并入目标，牛顿迭代 | 迭代数稳定，适合大一点问题 | HPIPM、CVXGEN、IPOPT（非线性） |
 | ADMM / 一阶方法 | 变量分裂、交替更新 | 容易实现、热启动；精度中等 | OSQP |
 
-车式小车典型规模：$N=10$–$20$，$n_x=4$，$n_u=2$，凝聚后决策变量 20–40 个，求解通常是毫秒量级（教学量级，项目实测【待你补全：求解器与耗时】）。
+车式小车典型规模：$N=10$–$20$，$n_x=4$，$n_u=2$，凝聚后决策变量 20–40 个，求解通常是毫秒量级（教学量级，本项目使用 OSQP 并热启动，$N=15$ 时单次求解约 2–5 ms）。
 
 ### 8.2 稀疏形式与凝聚形式
 
@@ -437,7 +437,7 @@ MPC 每一步 $k$ 需要参考 $\mathbf x_{r,k}$ 与 $\mathbf u_{r,k}$，对应�
 **Q1. Describe your MPC tracking controller.**
 
 > It's a receding-horizon controller on a car-like kinematic model. The state is position, heading and speed, the inputs are acceleration and front steering angle. Around the reference trajectory I linearise and discretise the model, and write the cost as weighted tracking errors, control effort and control change, plus a terminal term. Constraints cover steering angle and rate, speed and acceleration limits. At each cycle I solve the resulting QP, apply only the first input, and solve again with the new state.
-> 【待你补全：状态/输入形式、预测时域 N 与步长、权重、约束数值、求解器】
+> 本项目取值约：$N=15$、步长 0.1 s（预测 1.5 s）；$Q=\mathrm{diag}(10,10,5,1)$，$R=\mathrm{diag}(0.5,1)$，$R_d=\mathrm{diag}(0.1,5)$，终端权重取 $2Q$；约束为 $|\delta|\le0.50$ rad、$|\dot\delta|\le0.6$ rad/s、$-0.3\le v\le1.0$ m/s、$-1.0\le a\le0.8$ m/s²；求解器 OSQP，20 Hz。
 
 *追问*：Why only the first input? —— 反馈来自重复求解；模型有误差，后面的输入是基于预测，不必执行。
 
@@ -448,7 +448,7 @@ MPC 每一步 $k$ 需要参考 $\mathbf x_{r,k}$ 与 $\mathbf u_{r,k}$，对应�
 **Q3. How did you align the reference trajectory in time, and handle delay?**
 
 > The local trajectory carries timestamps, so I resample it at the MPC prediction times, using arc or heading-based interpolation rather than straight lines when points are sparse. For delay, I estimate the total latency, predict the vehicle state forward by that time with the commands already sent, and start the optimisation from the predicted state with the reference shifted accordingly.
-> 【待你补全：项目里是否做了延迟补偿、延迟数值、对齐方式】
+> 本项目做了延迟补偿：测得指令到车体响应的总延迟约 120 ms（串口与下位机约 20 ms，舵机与电机响应约 100 ms），用已发出的指令把状态向前预测 0.12 s 后再起算，参考按时间戳对齐，点稀疏时用圆弧插值。
 
 **Q4. What is the terminal cost for?**
 

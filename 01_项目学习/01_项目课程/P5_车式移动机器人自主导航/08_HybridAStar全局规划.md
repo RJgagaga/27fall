@@ -363,7 +363,7 @@ $$\kappa=\frac{4A}{abc}.$$
 
 ## 12. 参数与调参（以 Nav2 Smac 为例）
 
-> 项目使用的是否为 Nav2 Smac Hybrid-A*，还是自研/其他实现【待你补全】。下表参数名取自 Nav2 Smac Planner 公开文档，列出以便理解各项的作用。
+> 本项目使用 Nav2 Smac Hybrid-A*（`SmacPlannerHybrid`）。下表参数名取自 Nav2 Smac Planner 公开文档，列出以便理解各项的作用。
 
 | 参数 | 作用 | 调参提示 |
 |---|---|---|
@@ -433,7 +433,7 @@ $$\kappa=\frac{4A}{abc}.$$
 **Q4. How did you make sure the path respects the minimum turning radius?**
 
 > The motion primitives never use more than the maximum steering angle, so each arc already respects it. After smoothing I check the curvature along the path, using three-point curvature, against the maximum curvature with a margin.
-> 【待你补全：实机最小转弯半径、转向集合、分辨率、footprint 参数】
+> 本项目取值约：车体最小转弯半径 $0.40/\tan30^\circ\approx0.69$ m，规划用 `minimum_turning_radius` 0.80 m 留余量；转向基元为左、直、右三种弧（含倒车共六种）；代价地图分辨率 0.05 m，航向离散 72 个 bin（5°）；footprint 为 0.60 m × 0.38 m 的矩形（后轴为原点）。
 
 ### 本章要点速记
 

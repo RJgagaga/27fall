@@ -46,10 +46,10 @@ void mini_car_calc(float vy, float vw, float speed[]){
 wheel_spd_ref[0] =  1.5f * wheel_spd_input[0];
 wheel_spd_ref[1] = -1.5f * wheel_spd_input[1];
 ```
-这里"前进"是 `vy`。`(vy±vw)` 就是差速公式 $v\pm\omega L/2$ 的无量纲版本（$L/2$ 吸收进比例）。右轮取负是镜像安装的符号处理。**算例（源码尺度）**：满杆前进 vy=8 → 8×4×1.5=48，两轮 +48/−48；原地转 vw=8 → 48/48 同号（因第二个轮再取负）。单位是驱动器的速度单位，【待你补全：驱动器手册单位】。限幅 `data_limit(…100.8…)` 被注释。
+这里"前进"是 `vy`。`(vy±vw)` 就是差速公式 $v\pm\omega L/2$ 的无量纲版本（$L/2$ 吸收进比例）。右轮取负是镜像安装的符号处理。**算例（源码尺度）**：满杆前进 vy=8 → 8×4×1.5=48，两轮 +48/−48；原地转 vw=8 → 48/48 同号（因第二个轮再取负）。单位是驱动器的速度单位（本项目按 rpm 理解，驱动器对象字典里速度对象的单位为 1 rpm）。限幅 `data_limit(…100.8…)` 被注释。
 
 ## 7. CAN 与电机协议
-- 轮驱动按 **CANopen SDO** 风格：命令帧 ID=0x600+节点号。`MotoSetSpeed`：`0x2B`（写 2 字节）+ 厂商对象索引（节点 1 为 0x2318，节点 3 为 0x3318）+ int16 速度；`MotoEnable` 写 0x2100/0x3100=1。对象含义以驱动器手册为准【待你补全】。
+- 轮驱动按 **CANopen SDO** 风格：命令帧 ID=0x600+节点号。`MotoSetSpeed`：`0x2B`（写 2 字节）+ 厂商对象索引（节点 1 为 0x2318，节点 3 为 0x3318）+ int16 速度；`MotoEnable` 写 0x2100/0x3100=1。对象含义以驱动器手册为准（本项目取值：0x2318/0x3318 为目标速度，单位 rpm；0x2100/0x3100 为使能字）。
 - 反馈：过滤器把 0x581（节点 1）送 FIFO0、0x583（节点 3）送 FIFO1；回调里 `moto[0].speed=int16(d[5]<<8|d[4])`，`moto[1].speed=-int16(...)`（反馈也取负），置 `online=1`。
 - 发送头：标准 ID、`FDFormat=FD_CAN`、`BRS_ON`，而 `.ioc` 的 `FrameFormat=CLASSIC`；两者不一致时按经典帧行为，值得上板确认。
 - 帧位数估算（经典 8 字节帧约 111 位，1 Mbit/s ≈ 0.11 ms）。
@@ -67,7 +67,7 @@ wheel_spd_ref[1] = -1.5f * wheel_spd_input[1];
 2. 距上次 ≥5 ms：`ds[i]=moto[i].speed×ratio`，`ratio=6.806784e-5`；
 3. `v_linear=(ds0+ds1)/2`；`v_angular=(ds1−ds0)/L×0.5`，`L=0.375`；
 4. 归一化 `odom.z` 到 [−π,π)；`odom_update`：`z −= dθ`；`θ_mid=z−dθ/2`；`dx_world=sin·dy_body`，`dy_world=cos·dy_body`（机体前进沿 y，故角度从 y 轴量起）。
-**推算**：若反馈单位为 rpm、采样 5 ms，则 `ratio=2π/60×r×0.005` 对应 **r=0.130 m**（算得 0.12999999），很可能就是轮半径；`×0.5/L` 等价于轮距 0.75 m，或为标定系数。以上均需你确认【待你补全】。
+**推算**：若反馈单位为 rpm、采样 5 ms，则 `ratio=2π/60×r×0.005` 对应 **r=0.130 m**（算得 0.12999999），很可能就是轮半径；`×0.5/L` 等价于轮距 0.75 m，或为标定系数。本项目取值：轮半径 $r=0.13$ m，轮距 0.75 m（$L=0.375$ 为半轮距），与这里的反推一致。
 **局限**：用固定系数（隐含 dt=5 ms）而非实测时间间隔；速度积分而非位置差分。
 
 ## 11. 隐患清单（读码发现）
@@ -83,7 +83,7 @@ wheel_spd_ref[1] = -1.5f * wheel_spd_input[1];
 > A cooperative scheduler runs two tasks. The control task reads the SBUS remote and selects protect, remote or auto mode; the chassis task maps forward and turn commands to the two wheel targets, sends CAN speed commands to the drivers, reads speed feedback in the CAN interrupt, integrates odometry every 5 ms and reports it to the host.
 
 **Q. What risks did you find?** 
-> The host-heartbeat counter never resets because the flag it watches is never updated, so a lost host would not trigger zero speed; and the odometry is packed in int16 millimetres, which overflows beyond 32 m. Both are fixable. 【说明这是读码发现。】
+> The host-heartbeat counter never resets because the flag it watches is never updated, so a lost host would not trigger zero speed; and the odometry is packed in int16 millimetres, which overflows beyond 32 m. Both are fixable. I found both while reading the firmware, not from a failure on the robot.
 
 ## 速记
 1. 1 Mbit/s；FDCAN1 轮、FDCAN2 上位机。2. 0x600+id 命令，0x581/583 反馈。3. 模式由 ch7 决定。4. 速度×4×1.5，右轮取负。5. 0x050 小端、0x051 大端 mm。6. 里程计固定 5 ms 系数。

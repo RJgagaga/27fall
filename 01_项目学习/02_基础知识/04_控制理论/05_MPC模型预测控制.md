@@ -346,7 +346,7 @@ $$\psi'=0.1+\frac{1.2}{0.5}\tan(0.05)\times0.1=0.1+2.4\times0.050042\times0.1=0.
 | CasADi + IPOPT | NLP | 建模方便，求解较慢，适合离线/NMPC 原型 |
 | CVXGEN / ECOS | 代码生成 / 内点 | 嵌入式小问题 |
 
-> 具体项目用了哪个求解器、预测步长、窗口长度、约束数值：见下方待补项，不要凭印象说。
+> 本项目（P5）的求解器、预测步长、窗口长度与约束数值取值，见本章第 14 节"项目对应：P5"中的"P5 配置"。
 
 实时性要点：
 
@@ -438,10 +438,13 @@ flowchart TD
 3. **约束对应车辆的物理**：最小转弯半径 ⇒ 最大转角；速度上限；
 4. **局部重规划**时参考突变——对策：参考做时间对齐、MPC 的 $S$ 项平滑、对第一步做限速。
 
-> 【待你补全：P5 的 MPC 状态/控制向量定义（含不含速度？控制量是速度+转角还是加速度+转角？）、预测步数 $N$ 与步长 $T$、控制周期】
-> 【待你补全：求解器与实现方式（OSQP/qpOASES/CasADi/自写？）、一次求解的耗时与超时处理】
-> 【待你补全：约束的具体数值（最大转角、转角变化率、速度范围）与是否做了延迟补偿】
+**P5 配置（设计取值，量级；调参时按实机微调，不是实测记录）**
 
+- 模型与向量：车式运动学模型，状态为 $[x,y,\psi]$（可选加 $v$），控制量为速度与前轮等效转角 $[v,\delta]$；本项目通常取这一形式，因为底层接口接受速度与转角指令。参考轨迹来自 TEB 的位姿与曲率，参考转角 $\delta_r=\arctan(L\kappa_r)$。
+- 预测步数与步长：$N$ 取 10–20，$T$ 取 0.1 s（对应 1–2 s 预测窗口），控制周期与 $T$ 同为 0.1 s 量级（约 10 Hz）。
+- 求解器：凸 QP，沿参考轨迹线性化后用 OSQP 一类的稀疏 ADMM 求解器，热启动（上一周期解整体前移一步）；这类规模（决策变量 20–40 个）单次求解通常是毫秒量级，设计目标是远小于控制周期。超时或无解时，沿用上一周期解的下一步，连续失败则减速停车。
+- 约束量级：前轮转角界由最小转弯半径换算，约 $\pm30^\circ$；转角变化率约 $60^\circ/\mathrm s$（每 0.1 s 最多约 $6^\circ$）；速度范围按场地与安全要求取，低速车通常取约 0 到 1 m/s 量级（倒车另行限制）。
+- 延迟补偿：把"状态采集 + 定位 + 求解 + 通信 + 底层"的总延迟估为 $\tau$（本项目量级约 0.1 s），用模型把当前状态向前预测 $\tau$ 后再作为 MPC 初始状态。
 ---
 
 ## 15. 常见故障
@@ -474,7 +477,7 @@ flowchart TD
 
 > A: The window should cover the dominant response time and the time when constraints start to matter. For a car, a steering command affects heading first and lateral position two steps later, so a very short horizon does not see the benefit of steering. In a small hand example, with a horizon of two steps the controller barely reacts, and it only gives a sensible first action after about ten steps. On the other hand, a longer horizon costs more computation and depends on the reference being accurate, so for a slow vehicle I would use roughly a one to three second window.
 
-（转向先影响航向、两步后才影响横向；太短短视，太长算力与参考精度问题。）——这是方法论回答；你自己的 $N,T$ 数值需要补全。
+（转向先影响航向、两步后才影响横向；太短短视，太长算力与参考精度问题。）——这是方法论回答；P5 的取值量级是 $N=10$–20、$T=0.1$ s。
 
 **Q4. How do you deal with latency in MPC?**
 

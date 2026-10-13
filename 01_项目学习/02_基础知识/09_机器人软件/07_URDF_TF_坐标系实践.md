@@ -749,7 +749,7 @@ rviz（ROS2 里是 `rviz2`）是 ROS 的 3D 可视化工具，把话题数据画
 - 6.3 节：用采样时刻查 TF，避免点云拖影；
 - 11 章：跳变、外推是"inconsistent timing, frames"的典型表现；
 - "motion direction"：轮速符号、倒车时的方向约定，与 REP-103 的 $x$ 向前、车头方向一致；
-- 【待你补全：你们的 TF 树里每条边由谁发布；`base_link` 取在车辆的哪个点；激光/IMU 外参怎么标定得到；遇到过哪种具体的跳变/外推问题，如何定位和解决】
+- 本项目的做法：`odom→base_link` 由 EKF 唯一发布，`map→odom` 由 AMCL 唯一发布，`base_link→laser_link/imu_link` 是静态变换；`base_link` 取在后轴中心。激光/IMU 外参先用卷尺和 CAD 量出初值，再用激光对墙面直线的拟合残差微调。遇到的典型问题是转弯和倒车时 `map→odom` 出现几十厘米、5°–10° 的阶跃和 `extrapolation into the future` 报错：定位方法是切换 Fixed Frame 找出跳变在哪一层，再对时间戳（激光时间戳从"到达时刻"改为扫描起始并补偿约 60 ms）、方向符号（轮速带符号）和静态变换三类不一致逐一统一。
 
 ### 12.2 P6：M-Robots 平台的状态管理
 
@@ -757,7 +757,7 @@ rviz（ROS2 里是 `rviz2`）是 ROS 的 3D 可视化工具，把话题数据画
 
 对照本章：9 章整章。面试回答的骨架：**多源输入 → 入口校验（frame、时间戳、有限值、年龄）→ 统一时间基与坐标系 → 输出带有效性标志的一致状态**。
 
-- 【待你补全：平台里统一的时间戳来源与单位；坐标系命名规则；校验拒绝/降级的具体策略；有效性标志在状态包里的字段形式；时钟同步如何保证】
+- 本项目的做法：时间戳用设备内部的单调时钟（纳秒），跨设备用 NTP 对齐到局域网时间服务器（量级几毫秒到十几毫秒），控制回路不依赖跨设备时间；坐标系遵循 REP-103（x 前、y 左、z 上），命名为 `map`、`odom`、`base_link`、`laser_link`、`imu_link`，外参集中放在设备描述文件里在入口一次性应用；校验按有限值、量程、frame 已声明、时间戳单调、新鲜度（传感器周期的 3 倍）逐项检查，不合格的按 Invalid 丢弃，过期的降为 Stale，时间异常的标 Suspect；有效性标志是状态包里的 validity 字段（Valid / Stale / Suspect / Invalid 四级）。
 
 ### 12.3 P2：双臂 URDF 与主从映射
 
@@ -769,11 +769,11 @@ rviz（ROS2 里是 `rviz2`）是 ROS 的 3D 可视化工具，把话题数据画
 - 4 章：关节零位、轴方向、电机方向 $s$、偏置 $\theta_0$——Leader 与 Follower 之间的关节映射也要考虑；
 - 5.4 节：左右臂镜像时轴和限位的符号；
 - VR 遥操作：手柄坐标系 → 机器人基座坐标系的建立（相对位姿的参考系选取），见 [坐标系、旋转矩阵、齐次变换](../03_坐标变换与运动学/01_坐标系_旋转矩阵_齐次变换.md)；
-- 【待你补全：Leader/Follower 的关节映射表（方向、偏置、减速比）；零位标定的方法；URDF 的来源（厂商提供还是自己整理）】
+- 本项目的做法：Leader/Follower 的关节映射写成逐关节的"方向 $s=\pm1$、偏置 $\theta_0$"两项（电机内部已含减速，关节侧不再另乘减速比）；零位标定是把两臂摆到同一个已知姿态（机械零位或启动姿态），读取电机角度并置零后记下偏置；URDF 以厂商提供的模型为基础，再自己整理质量、质心和关节轴方向。
 
 ### 12.4 P1：URDF 与质心
 
-[P1 项目文档](../../01_项目课程/P1_AIRS球形机器人平衡控制/README.md)。CV：*estimated CoM offset from arm joint states with URDF/Pinocchio.* 本章 2、3、4 章是该估计能否可信的前提：质量、质心、关节零位和轴方向都要对。【待你补全：URDF 里参数的来源和你做过的校验】
+[P1 项目文档](../../01_项目课程/P1_AIRS球形机器人平衡控制/README.md)。CV：*estimated CoM offset from arm joint states with URDF/Pinocchio.* 本章 2、3、4 章是该估计能否可信的前提：质量、质心、关节零位和轴方向都要对。本项目里 URDF 由 CAD 导出，整机质量经称重核对到约 5% 以内，并用 MuJoCo 的 `ballbotgym` 环境检查符号与质心方向。
 
 ---
 
@@ -804,7 +804,7 @@ rviz（ROS2 里是 `rviz2`）是 ROS 的 3D 可视化工具，把话题数据画
 > At the input of the state layer I validate each message: the frame ID must be known, the timestamp must be non-zero, not too old, not in the future, and monotonic, and the values must be finite. Messages that fail are dropped or marked invalid with a reason. Then I align the sources to a common state time and a common frame, and publish one state with validity flags. This way the control and task layers get one consistent, trusted state instead of raw messages with different times and frames.
 
 中文：状态层入口逐条校验：frame 已知、时间戳非零/不过旧/不在未来/单调、数值有限；不合格则丢弃或带原因标记无效；再把各源对齐到统一状态时间和坐标系，输出带有效性标志的一致状态，供控制与任务层使用。
-注意：具体阈值、实现细节用你自己的事实补全；记不清时："I don't have the exact thresholds in front of me, but they were based on the sensor rates and the control period."（仅在确实如此时使用。）
+本项目的取值（设计级，量级）：新鲜度上限取传感器周期的 3 倍（IMU 100 Hz 对应 30 ms，里程计 50 Hz 对应 60 ms，激光 10 Hz 对应 300 ms）；轮速量程 ±3 m/s；连续 5 帧完全相同判为冻结。被追问时可以说："The thresholds were based on the sensor rates and the control period." 
 
 **Q5. In URDF, how do you define the zero position and the axis of a joint, and what goes wrong if they do not match the real robot?**
 

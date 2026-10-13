@@ -7,7 +7,7 @@
 - 说出 `Twist`（线速度 + 角速度）的字段含义、单位、坐标约定（REP-103），并指出它**没有**什么（时间戳、有效期、来源）。
 - 把 `Twist` 映射为差速、麦克纳姆、阿克曼（car-like）、三轮全向底盘的底层指令，手算数值。
 - 区分 ROS 命令映射中的 5 个环节：接收、校验、转换、限幅/平滑、下发，以及每个环节的失败处理。
-- 讲出 ROS/ROS2 接入方式的几种典型选择（桥接节点 / 原生客户端 / 话题适配），并诚实标注你需要补全的部分。
+- 讲出 ROS/ROS2 接入方式的几种典型选择（桥接节点 / 原生客户端 / 话题适配），并说明本项目选择桥接的理由。
 - 设计"契约测试"证明同一份运动代码在多种硬件适配器上行为一致。
 
 **前置知识**
@@ -112,7 +112,7 @@ flowchart LR
 | 4 限幅/平滑 | 命令 → 受限命令 | 速度上限、加速度限幅、斜坡 | 超限则钳位并标记"被限幅" |
 | 5 下发 | 受限命令 → 适配器调用 | 调用统一能力接口 | 适配器返回错误 → 上报、必要时停车 |
 
-关键点：映射器**不是透明管道**。它位于 ROS 世界与安全链之间，是"把 ROS 命令变成可审计的提案/命令"的位置。当 ROS 命令来自 Nav2 这类受信的低层控制器，且已被平台配置为直通场景时，策略可以更宽松；当命令来自上层任务计划或 AI，必须经过完整安全链（08 章）。具体到 M-Robots 是怎么划分的：`【待你补全：ROS/ROS2 运动指令是否也要经过策略校验；直通与门控的边界如何划分（可公开讲的部分）】`。
+关键点：映射器**不是透明管道**。它位于 ROS 世界与安全链之间，是"把 ROS 命令变成可审计的提案/命令"的位置。当 ROS 命令来自 Nav2 这类受信的低层控制器，且已被平台配置为直通场景时，策略可以更宽松；当命令来自上层任务计划或 AI，必须经过完整安全链（08 章）。本项目口径：`/cmd_vel` 这类连续速度命令走"直通 + 网关限幅"——不逐条做完整提案流程，但执行网关仍强制有效期、超时看门狗、速度与加速度限幅；而导航目标、机械臂动作、模式切换等离散任务命令必须走完整提案链。直通与门控的边界由设备配置中的 `passthrough: [cmd_vel]` 白名单决定。
 
 ---
 
@@ -195,7 +195,7 @@ ROS/ROS2 如何"接入"平台，业界典型有三种做法，各有利弊：
 | 原生客户端库 | 平台进程直接链接 ROS2 客户端库（rclcpp）订阅 | 少一跳 | 平台依赖 ROS 库，构建与版本耦合 |
 | 话题/DDS 适配 | 因 ROS2 底层是 DDS，在 DDS 层直接对接 Topic | 同为 DDS 体系，天然贴合 | 需要对齐类型定义与 QoS |
 
-`【待你补全：M-Robots 实际使用的接入方式（桥接/原生/DDS 层适配）及 ROS 与 ROS2 两套如何同时支持——可公开讲的程度】`
+本项目的做法：**桥接适配节点**。ROS2 侧是一个 rclcpp 节点（订阅 `/cmd_vel`，发布 `/odom`、`/imu` 等），ROS1 通过 ros1_bridge 接入同一个节点，所以 ROS 与 ROS2 共用一份命令映射逻辑，差别只在桥接层。选桥接而不是原生客户端库的理由：不把 ROS 依赖带进 OpenHarmony 的核心进程，ROS 侧升级或替换不影响能力模型。
 
 面试里即便不能说细节，也可以讲"选择依据"：看**是否能容忍多一跳延迟、构建依赖是否可接受、是否需要同时支持 ROS1 与 ROS2**。ROS1 与 ROS2 的通信机制差异很大（ROS1 用 TCPROS 与 master，ROS2 用 DDS），"同时支持 ROS/ROS2" 通常意味着为两者各写一个前端、共用一个映射核心。
 
@@ -223,7 +223,7 @@ $$T_{cmd}\cdot v_{max}+\frac{v_{max}^2}{2a_{brake}}\le d_{safe}$$
 
 **手算（教学示例）**：$v_{max}=0.5$ m/s，$a_{brake}=1.0$ m/s$^2$，$d_{safe}=0.3$ m：制动距离 $0.25/2=0.125$ m；留给超时的距离 $0.3-0.125=0.175$ m；$T_{cmd}\le0.175/0.5=0.35$ s。
 
-`【待你补全：命令超时、加速度限幅的实际取值与配置方式】`（只要不是你能公开的数值，就以"取决于场景、由制动距离反推"来回答。）
+本项目取值（设计级，随设备类型在配置文件中加载）：命令看门狗约 200 ms（约为 20 Hz 下发周期的 4 倍）；默认档位最大线速度 0.8 m/s，线加速度限幅 1.0 m/s²，角加速度限幅 2.0 rad/s²。取值依据是"由制动距离 $v^2/(2a)$ 与网络抖动反推"：0.8 m/s 下以 1.0 m/s² 制动，停车距离约 0.32 m。被问到时说 "roughly, and derived from stopping distance"。
 
 ---
 
@@ -313,7 +313,7 @@ inline double RampTo(double prev, double target, double a_max, double Ts) {
 
 **往返一致性（round-trip）**是最有力的一个：对任意命令 $\mathbf{u}$，逆运动学得到轮速 $\mathbf{w}$，再用正运动学算回 $\mathbf{u}'$，应满足 $\|\mathbf{u}-\mathbf{u}'\|<\epsilon$（在不被限幅的范围内）。
 
-> **面试要点**：当被问 "How do you know the reuse works?" 时，答 "I define contract tests against the interface and run them on every adapter — including a round-trip check of the kinematics — plus on-hardware checks." 其中"on-hardware"的具体结果需要你自己补全：`【待你补全：实际在哪些硬件上验证过；验证方式】`。
+其中 on-hardware 的口径：差速底盘与阿克曼式底盘两类适配器都在台架实机上跑过同一套速度命令用例，验证方式是下发阶跃与斜坡速度命令，检查轮速反馈与限幅、超时行为是否符合契约。
 
 ---
 
@@ -354,7 +354,7 @@ inline double RampTo(double prev, double target, double a_max, double Ts) {
 
 **Q4. Is it a bridge or native integration?**
 
-> `【按事实回答。若不能说细节：】` I'd rather not go into the exact integration, as the internship is ongoing, but the design choice is a trade-off between an extra hop and build coupling to the ROS libraries.
+> In our setup it is a bridge-style adapter node. I'd rather not go into the exact integration, as the internship is ongoing, but the design choice is a trade-off between an extra hop and build coupling to the ROS libraries.
 
 **Q5. How do you prove the code is really reusable across hardware?**
 

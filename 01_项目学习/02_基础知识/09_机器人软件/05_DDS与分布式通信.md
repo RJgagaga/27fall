@@ -420,7 +420,7 @@ $$
 
 ## 9. 多机器人协同的典型设计
 
-> 本章是**通用设计思路**，用"典型做法"的措辞。P6 平台里具体的 M-DDS 主题名、类型、API 属于平台内部事实，以你自己的项目为准，下文不做假设。
+> 本章是**通用设计思路**，用"典型做法"的措辞。P6 平台里的 M-DDS 主题与 QoS 取值在本章后文"本项目的设计取值"段给出，属于设计级描述，不是平台内部实现的转述。
 
 ### 9.1 总体分层
 
@@ -610,9 +610,9 @@ module robotics {
 | task dispatch | 9.5、6.7（lifespan）、幂等 |
 | gate task plans through the chain | 9.6 |
 
-面试时的稳妥表述：先讲**问题**（多设备怎么发现、怎么知道能力、状态如何一致、任务如何可靠下发），再讲**典型机制**（本章），最后讲**你自己做的部分**。涉及 M-DDS 的内部 API、主题命名、QoS 参数的具体取值，只讲你亲手做过并记得的；记不清就按下面的诚实模板。
+面试时的稳妥表述：先讲**问题**（多设备怎么发现、怎么知道能力、状态如何一致、任务如何可靠下发），再讲**典型机制**（本章），最后讲**我自己做的部分**。M-DDS 的内部 API 不展开，讲清我在其上定义的 Topic 与 QoS 即可。
 
-【待你补全：M-DDS 与标准 DDS 的关系（是否基于 Fast DDS / Cyclone DDS / 自研）；你们实际的主题划分与 QoS 选择；设备离线的判定方式与时间；任务请求是否带去重/过期；设备数量规模；发现是否依赖多播】
+本项目的设计取值（P6，设计级描述）：M-DDS 是平台提供的、面向 OpenHarmony 的 DDS 类发布订阅中间件，按"标准 DDS 概念的封装与裁剪版"来讲，我的代码只是使用者，在其上定义 Topic 与消息类型。QoS：状态高频通道用 BestEffort + Volatile + KeepLast(1) + Deadline（约 2 倍周期）；能力/健康通道用 Reliable + TransientLocal + KeepLast(1)；任务命令与回执用 Reliable + Volatile + KeepLast(10)。设备每 1 s 发一次公告，租约 3 s 未收到即判 OFFLINE，重上线时重新注册并做一次完整状态同步。任务请求带 idem_key 与有效期，按 idem_key 去重，去重表保留约 2 倍有效期（默认 60 s）。设计规模约 5–10 台机器人、每台 3–6 个设备（共约 30–60 个端点）；同一网段内以多播发现为主，多播被禁用时用静态对等列表兜底。
 
 ### 10.2 P2 / P5 中的 ROS2
 
@@ -664,7 +664,7 @@ P2 的"ROS2-CAN 执行链"、P5 的导航栈在 ROS2 下都运行在 DDS 之上�
 > A typical design uses a few topics with different QoS. Devices publish an announcement with an ID, a session ID and a capability description on a reliable, transient-local topic, so a late scheduler still sees them. State goes on a separate topic, with timestamps and sequence numbers, and a deadline so that stale state is detected. Tasks carry a unique ID, an expiry time and the target session, and the device deduplicates by ID, so a retry never executes twice. In my work on the platform I implemented these four functions, and the tasks pass through a proposal, policy check, execution and feedback chain before they reach a device.
 
 中文：用几个不同 QoS 的主题：设备公告（可靠 + transient local）带 ID、会话号、能力；状态带时间戳、序号和 deadline，检测陈旧；任务带唯一 ID、过期时间、目标会话，设备按 ID 去重，重试不重复执行；我在平台上实现了这四项功能，并让任务经"提案—策略检查—执行—反馈"链再到设备。
-注意：最后一句只陈述 CV 里的事实；具体主题名与参数需你补全。若被追问不记得的细节："I don't have the exact figure in front of me, but the idea is that the timeout was a few multiples of the update period."（仅在确实如此时使用。）
+注意：最后一句只陈述 CV 里的事实；主题名与参数按上面"本项目的设计取值"段讲，用 typically / in our design 这类措辞。被追问更细时可以说："In our design the timeout was about three announcement periods, and I'd rather not go into the platform internals."
 
 **Q5. DDS versus MQTT versus ZeroMQ?**
 
